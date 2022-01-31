@@ -3,26 +3,37 @@ import subprocess
 import xml.etree.ElementTree as ET
 from multiprocessing.pool import ThreadPool
 import threading
+from datetime import datetime
 
-# Settings
-seasons = ["1"]			# Empty list selects all seasons (specify as string)
-episodes = ["04"]			# Empty list selects all episodes (specify as string)
+# =========================== Settings ==================================================
 
-MAX_THREADS = 10
+# Empty list selects all seasons (specify as string)
+seasons = ["1"]
+# Empty list selects all episodes (specify as string)
+episodes = ["04"]
 
-titleLanguage = "DE"  # DE or EN
-
-inputPath = "Stargate Universe/"
+# Input path containing different season folders and info.xml
+inputPath = "E:/Filme/JDownloader/Stargate Universe/"
+# Output path
 outputPath = "E:/Filme/Stargate Universe/"
 
-ffmpeg = "ffmpeg.exe"
-mkvpropedit = "mkvpropedit.exe"
+# Select title language (DE or EN)
+titleLanguage = "DE"
+
+# Maximum number of simultaneous threads
+MAX_THREADS = 10
+
+# Application paths
+ffmpeg = "../ffmpeg.exe"
+mkvpropedit = "../mkvpropedit.exe"
 avidemux = "E:/Program Files/Avidemux 2.7 VC++ 64bits/Avidemux.exe"
-avidemuxSettings = "avidemux_settings.py"
-logFile = "log.txt"
+avidemuxSettings = "settings/avidemux_settings.py"
 
-threadLock = threading.Lock()
+# Log file location
+logFile = "logs/log_" + datetime.today().now().strftime("%Y%m%d_%H%M%S")
 
+
+# =========================== Functions =================================================
 
 class SettingsEpisode:
 	def __init__(
@@ -139,8 +150,16 @@ def processEpisode(ep):
 		])
 
 
+# =========================== Start of Script ===========================================
+
+# Create thread lock
+threadLock = threading.Lock()
+
 # Clear log file
 open(logFile, 'w').close()
+
+# Write name of script to log file
+logWrite("This is " + os.path.basename(__file__))
 
 # Get root element of XML file
 root_node = ET.parse(inputPath + "info.xml").getroot()

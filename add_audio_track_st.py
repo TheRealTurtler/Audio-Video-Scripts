@@ -1,23 +1,34 @@
 import os
 import subprocess
 import xml.etree.ElementTree as ET
+from datetime import datetime
 
-# Settings
-seasons = ["1"]			# Empty list selects all seasons (specify as string)
-episodes = ["05"]			# Empty list selects all episodes (specify as string)
+# =========================== Settings ==================================================
 
-titleLanguage = "DE"		# DE or EN
+# Empty list selects all seasons (specify as string)
+seasons = []
+# Empty list selects all episodes (specify as string)
+episodes = []
 
-inputPath = "Stargate Atlantis/"
-#outputPath = "E:/Filme/Stargate Atlantis/"
-outputPath = "./Test/"
+# Input path containing different season folders and info.xml
+inputPath = ""
+# Output path
+outputPath = ""
 
-ffmpeg = "ffmpeg.exe"
-mkvpropedit = "mkvpropedit.exe"
+# Select title language (DE or EN)
+titleLanguage = "DE"
+
+# Application paths
+ffmpeg = "../ffmpeg.exe"
+mkvpropedit = "../mkvpropedit.exe"
 avidemux = "E:/Program Files/Avidemux 2.7 VC++ 64bits/Avidemux.exe"
-avidemuxSettings = "avidemux_settings.py"
-logFile = "log.txt"
+avidemuxSettings = "settings/avidemux_settings.py"
 
+# Log file location
+logFile = "logs/log_" + datetime.today().now().strftime("%Y%m%d_%H%M%S")
+
+
+# =========================== Functions =================================================
 
 def logWrite(logStr):
 	print(logStr)
@@ -30,6 +41,14 @@ def errorCritical(errorStr):
 	print()
 	exit()
 
+
+# =========================== Start of Script ===========================================
+
+# Clear log file
+open(logFile, 'w').close()
+
+# Write name of script to log file
+logWrite("This is " + os.path.basename(__file__))
 
 # Get root element of XML file
 root_node = ET.parse(inputPath + "info.xml").getroot()

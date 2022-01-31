@@ -1,19 +1,33 @@
 import os
 import subprocess
 import xml.etree.ElementTree as ET
+from datetime import datetime
 
-# Settings
-seasons = ["1"]			# Empty list selects all seasons (specify as string)
-episodes = []			# Empty list selects all episodes (specify as string)
+# =========================== Settings ==================================================
 
-titleLanguage = "EN"  # DE or EN
+# Empty list selects all seasons (specify as string)
+seasons = ["1"]
+# Empty list selects all episodes (specify as string)
+episodes = ["04"]
 
+# Input path containing different season folders and info.xml
 inputPath = "E:/Filme/The Expanse/"
 
-ffmpeg = "ffmpeg.exe"
-mkvpropedit = "mkvpropedit.exe"
-logFile = "log.txt"
+# Select title language (DE or EN)
+titleLanguage = "DE"
 
+# Maximum number of simultaneous threads
+MAX_THREADS = 10
+
+# Application paths
+ffmpeg = "../ffmpeg.exe"
+mkvpropedit = "../mkvpropedit.exe"
+
+# Log file location
+logFile = "logs/log_" + datetime.today().now().strftime("%Y%m%d_%H%M%S")
+
+
+# =========================== Functions =================================================
 
 class SettingsEpisode:
 	def __init__(
@@ -77,8 +91,13 @@ def processEpisode(_prefixShow, _prefixSeason, ep):
 		logWrite("Error: " + folderPath + ep.fileVideo + "does not exist!")
 
 
+# =========================== Start of Script ===========================================
+
 # Clear log file
 open(logFile, 'w').close()
+
+# Write name of script to log file
+logWrite("This is " + os.path.basename(__file__))
 
 # Get root element of XML file
 root_node = ET.parse(inputPath + "info.xml").getroot()
