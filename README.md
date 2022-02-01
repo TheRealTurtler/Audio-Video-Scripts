@@ -1,9 +1,13 @@
 # Audio-Video-Scripts
 Collection of various scripts to edit audio and/or video files.
 
+Important settings are contained near the top of each script.
+
 # add_audio_track_mt
-Adds an audio track to a video file. All settings are contained in a info.xml file.
+Adds an audio track to a video file. All settings are contained in an info.xml file.
+
 Primary purpose is to add german audio tracks to english videos.
+
 This version is multi-threaded.
 
 # add_audio_track_st
