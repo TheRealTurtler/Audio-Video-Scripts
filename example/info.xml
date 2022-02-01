@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<TVShow>
+	<FilePathVideo>Englisch/</FilePathVideo>
+	<FilePathAudio>Deutsch/</FilePathAudio>
+	<PrefixShow>Show Title (Year)-</PrefixShow>
+	
+	<Season>
+		<FilePathSeason>Season 01/</FilePathSeason>
+		<PrefixSeason>S01-</PrefixSeason>
+		<AudioStart>00:00:00.000</AudioStart>
+		<Episodes>
+			<Episode>
+				<FileNameVideo>File.S01.E01.mkv</FileNameVideo>
+				<FileNameAudio>File.S01.E01.m4a</FileNameAudio>
+				<TitleDE>Titel Deutsch</TitleDE>
+				<TitleEN>Title English</TitleEN>
+				<PrefixEpisode>E01 - </PrefixEpisode>
+				<AudioOffset>500ms</AudioOffset>
+			</Episode>
+			<Episode>
+				<FileNameVideo>File.S01.E02.mkv</FileNameVideo>
+				<FileNameAudio>File.S01.E02.m4a</FileNameAudio>
+				<TitleDE>Titel Deutsch</TitleDE>
+				<TitleEN>Title English</TitleEN>
+				<PrefixEpisode>E02 - </PrefixEpisode>
+				<AudioOffset>500ms</AudioOffset>
+			</Episode>
+			<Episode>
+				<FileNameVideo>File.S01.E03.mkv</FileNameVideo>
+				<FileNameAudio>File.S01.E03.m4a</FileNameAudio>
+				<TitleDE>Titel Deutsch</TitleDE>
+				<TitleEN>Title English</TitleEN>
+				<PrefixEpisode>E03 - </PrefixEpisode>
+				<AudioOffset>500ms</AudioOffset>
+			</Episode>
+		</Episodes>
+	</Season>
+</TVShow>
