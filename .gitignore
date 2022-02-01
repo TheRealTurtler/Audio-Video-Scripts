@@ -123,3 +123,8 @@ ffprobe.exe
 
 # MKVPropEdit
 mkvpropedit.exe
+
+# Media files
+*.m4a
+*.mkv
+*.mp4
