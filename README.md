@@ -24,3 +24,6 @@ The following applications are necessary for these scripts to function correctly
   * [FFMPEG](https://ffmpeg.org/)
   * [FFMPEG-Normalize](https://github.com/slhck/ffmpeg-normalize)
   * [MKVPropEdit](https://mkvtoolnix.download/index.html)
+
+# IDE
+This project was created using PyCharm 2020.3.5 (Community Edition) with Python 3.7.
