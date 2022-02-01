@@ -25,7 +25,7 @@ avidemux = "E:/Program Files/Avidemux 2.7 VC++ 64bits/Avidemux.exe"
 avidemuxSettings = "settings/avidemux_settings.py"
 
 # Log file location
-logFile = "logs/log_" + datetime.today().now().strftime("%Y%m%d_%H%M%S")
+logFile = "logs/log_" + os.path.splitext(os.path.basename(__file__))[0] + datetime.today().now().strftime("%Y%m%d_%H%M%S") + ".txt"
 
 
 # =========================== Functions =================================================

@@ -11,7 +11,7 @@ seasons = ["1"]
 episodes = ["04"]
 
 # Input path containing different season folders and info.xml
-inputPath = "E:/Filme/The Expanse/"
+inputPath = ""
 
 # Select title language (DE or EN)
 titleLanguage = "DE"
@@ -24,7 +24,7 @@ ffmpeg = "../ffmpeg.exe"
 mkvpropedit = "../mkvpropedit.exe"
 
 # Log file location
-logFile = "logs/log_" + datetime.today().now().strftime("%Y%m%d_%H%M%S")
+logFile = "logs/log_" + os.path.splitext(os.path.basename(__file__))[0] + datetime.today().now().strftime("%Y%m%d_%H%M%S") + ".txt"
 
 
 # =========================== Functions =================================================

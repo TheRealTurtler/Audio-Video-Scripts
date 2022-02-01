@@ -11,3 +11,8 @@ Same as add_audio_track_st, but single threaded.
 
 # rename_video
 Renames multiple video files according to a title specified in info.xml.
+
+# Additional Applications
+The following applications are necessary for these scripts to function correctly and need to be placed inside the root directory:
+  * [FFMPEG](https://ffmpeg.org/)
+  * [MKVPropEdit](https://mkvtoolnix.download/index.html)

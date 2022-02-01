@@ -8,29 +8,40 @@ from datetime import datetime
 # =========================== Settings ==================================================
 
 # Empty list selects all seasons (specify as string)
-seasons = ["1"]
+seasons = ["01", "02"]
 # Empty list selects all episodes (specify as string)
-episodes = ["04"]
+episodes = ["01"]
 
 # Input path containing different season folders and info.xml
-inputPath = "E:/Filme/JDownloader/Stargate Universe/"
+inputPath = "E:/Filme/JDownloader/Stargate Atlantis/"
 # Output path
-outputPath = "E:/Filme/Stargate Universe/"
+outputPath = "E:/Plex/Serien [DE-EN]/Stargate Atlantis (2004)/"
 
 # Select title language (DE or EN)
 titleLanguage = "DE"
 
+# Normalize audio
+enableNormalization = True
+
 # Maximum number of simultaneous threads
-MAX_THREADS = 10
+MAX_THREADS = 6
+
+# Additional audio track 'FPS'
+# (fps of source video where the audio track is from)
+# (25 for PAL)
+audioFps = 25
 
 # Application paths
-ffmpeg = "../ffmpeg.exe"
-mkvpropedit = "../mkvpropedit.exe"
-avidemux = "E:/Program Files/Avidemux 2.7 VC++ 64bits/Avidemux.exe"
-avidemuxSettings = "settings/avidemux_settings.py"
+ffmpeg = "ffmpeg.exe"
+ffprobe = "ffprobe.exe"
+ffmpegNormalize = "ffmpeg-normalize"		# Needs to be installed with pip3 install ffmpeg-normalize
+mkvpropedit = "mkvpropedit.exe"
 
 # Log file location
-logFile = "logs/log_" + datetime.today().now().strftime("%Y%m%d_%H%M%S")
+logFile = "logs/log_" \
+		  + os.path.splitext(os.path.basename(__file__))[0] \
+		  + datetime.today().now().strftime("%Y%m%d_%H%M%S") \
+		  + ".txt"
 
 
 # =========================== Functions =================================================
@@ -38,19 +49,23 @@ logFile = "logs/log_" + datetime.today().now().strftime("%Y%m%d_%H%M%S")
 class SettingsEpisode:
 	def __init__(
 			self,
-			fileVideo,
-			fileAudio,
-			titleDE,
-			titleEN,
-			filePrefix,
-			audioOffset
+			_seasonPath,
+			_fileVideo,
+			_fileAudio,
+			_titleDE,
+			_titleEN,
+			_filePrefix,
+			_audioStart,
+			_audioOffset
 	):
-		self.fileVideo = fileVideo
-		self.fileAudio = fileAudio
-		self.titleDE = titleDE
-		self.titleEN = titleEN
-		self.filePrefix = filePrefix
-		self.audioOffset = audioOffset
+		self.seasonPath  = _seasonPath
+		self.fileVideo   = _fileVideo
+		self.fileAudio   = _fileAudio
+		self.titleDE     = _titleDE
+		self.titleEN     = _titleEN
+		self.filePrefix  = _filePrefix
+		self.audioStart  = _audioStart
+		self.audioOffset = _audioOffset
 
 
 def logWrite(logStr):
@@ -66,75 +81,139 @@ def errorCritical(errorStr):
 
 
 def processEpisode(ep):
-	# Check if audio file exists
-	filePath = inputPath + audioPath + seasonPath + ep.fileAudio
-	convertedAudioFilePath = inputPath + audioPath + seasonPath + os.path.splitext(ep.fileAudio)[0] + ".aac"
-	if os.path.exists(filePath):
-		# Extract .aac audio file from .m4a container
-		logWrite("Extracting audio from " + '"' + filePath + '"' + "...")
-		subprocess.run([
-			ffmpeg,
-			"-hide_banner",
-			"-loglevel",
-			"error",
-			"-y",
-			"-ss",
-			audioStart,
-			"-i",
-			filePath,
-			"-acodec",
-			"copy",
-			convertedAudioFilePath
-		])
-	else:
-		errorCritical('"' + filePath + '"' + " does not exist!")
-
-	# Read settings file
-	with threadLock:
-		with open(avidemuxSettings, 'r') as file:
-			data = file.readlines()
-
-			for idx, line in enumerate(data):
-				if "adm.audioAddExternal" in line:
-					data[idx] = "adm.audioAddExternal(\"" + convertedAudioFilePath + "\")\n"
-				if "adm.audioSetShift(0" in line:
-					data[idx] = "adm.audioSetShift(0, 1, " + ep.audioOffset + ")\n"
-
-	modifiedAvidemuxSettings = os.path.splitext(avidemuxSettings)[0] + " - " + os.path.splitext(ep.fileVideo)[0] + ".py"
-
-	# Write settings file
-	with open(modifiedAvidemuxSettings, 'w') as file:
-		for line in data:
-			file.write(line)
-
-	# Check if video file exists
-	filePath = inputPath + videoPath + seasonPath + ep.fileVideo
+	audioFilePath = inputPath + audioPath + ep.seasonPath + ep.fileAudio
+	videoFilePath = inputPath + videoPath + ep.seasonPath + ep.fileVideo
 	episodeFullTitle = outputFilePrefixShow \
-					   + outputFilePrefixSeason \
 					   + ep.filePrefix \
 					   + ep.titleDE if titleLanguage == "DE" else ep.titleEN
 	convertedVideoFilePath = outputPath + seasonPath + episodeFullTitle + ".mkv"
-	if os.path.exists(filePath):
-		# Add audio track to video
-		logWrite("Adding audio track to video file " + '"' + filePath + '"' + "...")
-		subprocess.run([
-			avidemux,
-			"--load",
-			filePath,
-			"--run",
-			modifiedAvidemuxSettings,
-			"--save",
-			convertedVideoFilePath,
-			"--quit"
-		])
+	tempFilePath = outputPath + ep.seasonPath + "temp_" + episodeFullTitle + ".mkv"
+	audioSpeed = 1.0
+	audioCodec = "aac"
 
-		# Delete extracted audio
-		os.remove(convertedAudioFilePath)
+	# Check if video and audio files exist
+	if os.path.exists(videoFilePath):
+		if os.path.exists(audioFilePath):
+			logWrite("Checking framerate of \"" + videoFilePath + "\"...")
 
-		# Delete modified avidemux settings file
-		os.remove(modifiedAvidemuxSettings)
+			probeOut = subprocess.check_output([
+				ffprobe,
+				"-v",										# Less output
+				"quiet",
+				"-print_format",							# Set print format to only return values, not keys
+				"default=noprint_wrappers=1:nokey=1",
+				"-show_entries",							# Filter specific entries
+				"stream=avg_frame_rate",
+				videoFilePath
+			]).decode("utf-8")								# Decode bytes into text
+
+			probeOut = probeOut.split("\r\n")
+
+			if len(probeOut) > 0:
+				probeOut = probeOut[0].split("/")
+			else:
+				errorCritical("Failed to get framerate from \"" + videoFilePath + "\"!")
+
+			if len(probeOut) > 1:
+				# Calculate factor by which the additional audio track needs to be slowed down
+				audioSpeed = (int(probeOut[0]) / int(probeOut[1])) / audioFps
+			else:
+				errorCritical("Failed to get framerate from \"" + videoFilePath + "\"!")
+
+			logWrite("Checking audio codec of \"" + audioFilePath + "\"...")
+
+			probeOut = subprocess.check_output([
+				ffprobe,
+				"-v",  										# Less output
+				"quiet",
+				"-print_format", 							# Set print format to only return values, not keys
+				"default=noprint_wrappers=1:nokey=1",
+				"-show_entries",							# Filter specific entries
+				"stream=codec_name",
+				audioFilePath
+			]).decode("utf-8")  # Decode bytes into text
+
+			probeOut = probeOut.split("\r\n")
+
+			if len(probeOut) > 0:
+				audioCodec = probeOut[0]
+			else:
+				errorCritical("Failed to get audio codec from \"" + audioFilePath + "\"!")
+
+			logWrite(
+				"Adding audio track \""
+				+ ep.seasonPath
+				+ ep.fileAudio
+				+ "\" to video file \""
+				+ ep.seasonPath
+				+ ep.fileVideo +
+				"\"..."
+			)
+
+			# Add additional audio track with offset and speed adjustment
+			subprocess.run([
+				ffmpeg,
+				"-hide_banner",			# Hide start info
+				"-loglevel",			# Less output
+				"error",
+				"-y",					# Override files
+				"-i",					# Input video
+				videoFilePath,
+				"-ss",					# Skip to .. in next input file
+				ep.audioStart,
+				"-itsoffset",			# Apply offset to next input file
+				ep.audioOffset,
+				"-i",					# Input audio
+				audioFilePath,
+				"-c:v",					# Copy video stream
+				"copy",
+				"-c:a:0",				# Copy original audio stream
+				"copy",
+				"-c:a:1",				# Re-encode additional audio stream with aac
+				audioCodec,
+				"-c:s",					# Copy subtitles
+				"copy",
+				"-map",					# Use everything from first input file
+				"0",
+				"-map",					# Use only audio from second input file
+				"1:a",
+				"-filter:a:1",			# Adjust speed of audio stream 1 (additional audio)
+				"atempo=" + str(audioSpeed),
+				"-metadata:s:a:0",		# Set audio stream language
+				"language=eng",
+				"-metadata:s:a:1",		# Set audio stream language
+				"language=de",
+				"-metadata:s:s:0",		# Set subtitle stream language
+				"language=eng",
+				tempFilePath if enableNormalization else convertedVideoFilePath			# Output video
+			])
+		else:
+			errorCritical('"' + audioFilePath + "\" does not exist!")
 	else:
-		errorCritical('"' + filePath + '"' + " does not exist!")
+		errorCritical('"' + videoFilePath + "\" does not exist!")
+
+	if enableNormalization:
+		# Check if temporary output file exists
+		if os.path.exists(tempFilePath):
+			logWrite("Normalizing loudness of file \"" + tempFilePath + "\"...")
+
+			# Normalize loudness
+			subprocess.run([
+				ffmpegNormalize,
+				"-q",						# Quiet
+				#"-pr",						# Show progress bar
+				"-f",						# Overwrite files
+				tempFilePath,				# Input file
+				"-c:a",						# Re-encode audio with aac
+				audioCodec,
+				"-o",						# Output file
+				convertedVideoFilePath
+			])
+
+			# Delete temporary output file
+			os.remove(tempFilePath)
+		else:
+			errorCritical('"' + videoFilePath + "\" does not exist!")
 
 	# Check if output file exists
 	if os.path.exists(convertedVideoFilePath):
@@ -171,6 +250,9 @@ audioPath = root_node.find("FilePathAudio").text
 # Get show prefix for output file name from XML
 outputFilePrefixShow = root_node.find("PrefixShow").text
 
+# List containing settings for each episode in this season
+episodeSettings = []
+
 # Loop over all seasons in XML file
 for season in root_node.findall("Season"):
 	# Check if only specific seasons should be processed
@@ -187,15 +269,6 @@ for season in root_node.findall("Season"):
 
 	# Get path for season
 	seasonPath = season.find("FilePathSeason").text
-
-	# Get season prefix for output file name
-	outputFilePrefixSeason = season.find("PrefixSeason").text
-
-	# Get start time for audio
-	audioStart = season.find("AudioStart").text
-
-	# List containing settings for each episode in this season
-	episodeSettings = []
 
 	# Check if output folder exists and create it if it doesn't
 	if not os.path.isdir(outputPath + seasonPath):
@@ -216,20 +289,22 @@ for season in root_node.findall("Season"):
 			continue
 
 		episodeSettings.append(SettingsEpisode(
+			seasonPath,
 			episode.find("FileNameVideo").text,
 			episode.find("FileNameAudio").text,
 			episode.find("TitleDE").text,
 			episode.find("TitleEN").text,
-			episode.find("PrefixEpisode").text,
+			season.find("PrefixSeason").text + episode.find("PrefixEpisode").text,
+			season.find("AudioStart").text,
 			episode.find("AudioOffset").text
 		))
 
-	pool = ThreadPool(MAX_THREADS)
-	results = []
+pool = ThreadPool(MAX_THREADS)
+results = []
 
-	while episodeSettings:
-		es = episodeSettings.pop()
-		results.append(pool.apply_async(processEpisode, (es,)))
+while episodeSettings:
+	es = episodeSettings.pop()
+	results.append(pool.apply_async(processEpisode, (es,)))
 
-	pool.close()
-	pool.join()
+pool.close()
+pool.join()
