@@ -13,7 +13,7 @@ Same as add_audio_track_st, but single threaded.
 Renames multiple video files according to a title specified in info.xml.
 
 # Examples
-For a example directory structure and info.xml file see the example folder.
+For an example directory structure and info.xml file see the example folder.
 
 # Additional Applications
 The following applications are necessary for these scripts to function correctly and need to be placed inside the root directory:
