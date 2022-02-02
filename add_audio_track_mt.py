@@ -28,6 +28,7 @@ enableNormalization = True
 loudnessTarget = -23.0		# EBU recommendation
 loudnessTruePeak = -1.0		# EBU limit
 loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra
+normalizedAudioSampleRate = 96000		# EBU normalization overrides input sample rate to 192kHz, down-sample to 96kHz
 
 # Enable logging to file
 enableLogFile = False
@@ -65,6 +66,8 @@ logFile = "logs/log_" \
 # Progress amount on the progress bar
 progressAudioEncode = 100
 progressMKVProperties = 10
+
+audioCodecAAC = "aac"
 
 
 # =========================== Functions =================================================
@@ -179,7 +182,14 @@ def processEpisode(ep):
 			for element in probeOut:
 				regexMatch = regex.match(element)
 				if regexMatch:
-					audioCodec = regexMatch.group(1)
+					if regexMatch.group(1) == "aac":
+						audioCodec = audioCodecAAC
+					else:
+						logWrite(
+							"Audio codec of file \""
+							+ audioFilePath
+							+ "\" does not a specified codec, assuming codec name is identical to ffmpeg naming...")
+						audioCodec = regexMatch.group(1)
 					break
 
 			logWrite(
@@ -188,8 +198,8 @@ def processEpisode(ep):
 				+ ep.fileAudio
 				+ "\" to video file \""
 				+ ep.seasonPath
-				+ ep.fileVideo +
-				"\"..."
+				+ ep.fileVideo
+				+ "\"..."
 			)
 
 			# Add thread progress to dictionary
@@ -210,12 +220,12 @@ def processEpisode(ep):
 				"-y",					# Override files
 				"-i",					# Input video
 				videoFilePath,
-				"-ss",					# Skip to .. in next input file
+				"-ss",					# Skip specified time in next input file
 				ep.audioStart,
-				#"-itsoffset",			# Apply offset to next input file
-				#ep.audioOffset,
 				"-i",					# Input audio
 				audioFilePath,
+				"-filter_complex",		# Adjust speed and delay of additional audio track
+				"[1:a]adelay=delays=" + ep.audioOffset + ":all=1,atempo=" + str(audioSpeed) + "[out]",
 				"-c:v",					# Copy video stream
 				"copy",
 				"-c:a:0",				# Copy original audio stream
@@ -224,15 +234,12 @@ def processEpisode(ep):
 				audioCodec,
 				"-c:s",					# Copy subtitles
 				"copy",
-				"-filter_complex",
-				"[1:a]adelay=delays=" + ep.audioOffset + ":all=1,atempo=" + str(audioSpeed) + "[out]",
-				#"-filter:a:1",			# Adjust speed of audio stream 1 (additional audio)
-				#"atempo=" + str(audioSpeed),
-				"-map",  # Use everything from first input file
+				"-map",  				# Use everything from first input file
 				"0",
-				"-map",  # Use only audio from second input file
-				#"1:a",
+				"-map",  				# Use filtered audio
 				"[out]",
+				"-max_interleave_delta",		# Needed for use with subtitles, otherwise audio has buffering issues
+				"0",
 				"-metadata:s:a:0",		# Set audio stream language
 				"language=eng",
 				"-metadata:s:a:1",		# Set audio stream language
@@ -280,6 +287,18 @@ def processEpisode(ep):
 			# Wait for process to finish
 			process.wait()
 
+			# Check exit code
+			if process.returncode:
+				errorCritical(
+					"Failed to add audio track \""
+					+ ep.seasonPath
+					+ ep.fileAudio
+					+ "\" to video file \""
+					+ ep.seasonPath
+					+ ep.fileVideo
+					+ "\"! Exiting..."
+				)
+
 			# Add any missing percent value to progress bar
 			threadProgress[threading.get_ident()].update(maxPercent - percentCounter)
 			threadProgress[threading.get_ident()].refresh()
@@ -306,6 +325,8 @@ def processEpisode(ep):
 				str(loudnessRange),
 				"-tp",						# Loudness true peak
 				str(loudnessTruePeak),
+				"-ar",						# Sample rate for output file
+				str(normalizedAudioSampleRate),
 				tempFilePath,				# Input file
 				"-c:a",						# Re-encode audio with aac
 				audioCodec,
@@ -358,6 +379,14 @@ def processEpisode(ep):
 			# Wait for process to finish
 			process.wait()
 
+			# Check exit code
+			if process.returncode:
+				errorCritical(
+					"Failed to normalize loudness of file \""
+					+ tempFilePath
+					+ "\"! Exiting..."
+				)
+
 			# Add any missing percent value to progress bar
 			threadProgress[threading.get_ident()].update(maxPercent - percentCounter)
 			threadProgress[threading.get_ident()].refresh()
@@ -369,6 +398,8 @@ def processEpisode(ep):
 
 	# Check if output file exists
 	if os.path.exists(convertedVideoFilePath):
+		logWrite("Updating metadata of file \"" + convertedVideoFilePath + "\"...")
+
 		# Set title in video file properties
 		process = subprocess.Popen([
 			mkvpropedit,
@@ -399,6 +430,14 @@ def processEpisode(ep):
 
 		# Wait for process to finish
 		process.wait()
+
+		# Check exit code
+		if process.returncode:
+			errorCritical(
+				"Failed to update metadata of file \""
+				+ convertedVideoFilePath
+				+ "\"! Exiting..."
+			)
 
 		# Add any missing percent value to progress bar
 		threadProgress[threading.get_ident()].update(progressMKVProperties - percentCounter)

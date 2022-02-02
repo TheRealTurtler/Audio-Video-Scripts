@@ -118,6 +118,7 @@ logs/
 
 # FFMPEG
 ffmpeg.exe
+ffmpeg*.exe
 ffplay.exe
 ffprobe.exe
 
