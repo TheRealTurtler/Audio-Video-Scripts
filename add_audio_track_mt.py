@@ -6,9 +6,11 @@ import threading
 from datetime import datetime
 from tqdm import tqdm
 import re
+import json
 
 
 # =========================== Settings ==================================================
+
 
 # Empty list selects all seasons (specify as string)
 seasons = ["01"]
@@ -18,20 +20,26 @@ episodes = ["01"]
 # Input path containing different season folders and info.xml
 inputPath = "E:/Filme/JDownloader/Stargate Atlantis/"
 # Output path
-outputPath = "E:/Plex/Serien [DE-EN]/Stargate Atlantis (2004)/"
+#outputPath = "E:/Plex/Serien [DE-EN]/Stargate Atlantis (2004)/"
+outputPath = "E:/Filme/JDownloader/Audio-Video-Scripts/Test/"
 
 # Select title language (DE or EN)
 titleLanguage = "DE"
 
 # Normalize audio
-enableNormalization = True
-loudnessTarget = -23.0		# EBU recommendation
-loudnessTruePeak = -1.0		# EBU limit
-loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra
-normalizedAudioSampleRate = 96000		# EBU normalization overrides input sample rate to 192kHz, down-sample to 96kHz
+enableNormalization = False
+loudnessTarget = -23.0		# EBU recommendation: (-23.0)
+loudnessTruePeak = -1.0		# EBU limit (-1.0)
+loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
+normalizedAudioSampleRate = 96000		# EBU normalization overrides input sample rate to 192kHz, down-sample to 96kHz (96000)		// TODO
+
+# Set file metadata using MKVPropedit
+# TODO: remove mkvpropedit
+enableMKVPropedit = False
 
 # Enable logging to file
 enableLogFile = False
+enableUniqueLogFile = False
 
 # Maximum number of simultaneous threads
 MAX_THREADS = 6
@@ -48,29 +56,42 @@ ffmpegNormalize = "ffmpeg-normalize"		# Needs to be installed with pip3 install 
 mkvpropedit = "mkvpropedit.exe"
 
 # RegEx strings
-REGEX_AVG_FPS = r"avg_frame_rate=(\d+)/(\d+)"
-REGEX_AUDIO_CODEC = r"codec_name=(.*)"
 REGEX_MEDIA_STREAM = r"Stream #(\d+):(\d+):\s*Video:"
 REGEX_TOTAL_FRAMES = r"NUMBER_OF_FRAMES\s*:\s*(\d+)"
 REGEX_CURRENT_FRAME = r"frame\s*=\s*(\d+)"
+
 REGEX_NORMALIZATION = r"Stream\s*(\d+)/(\d+):\s*(\d+)%"
 REGEX_NORMALIZATION_SECOND = r"Second Pass\s*:\s*(\d+)%"
+
 REGEX_MKVPROPEDIT = r"Progress:\s*(\d+)%"
 
 # Log file location
-logFile = "logs/log_" \
-		  + os.path.splitext(os.path.basename(__file__))[0] \
-		  + datetime.today().now().strftime("%Y%m%d_%H%M%S") \
-		  + ".txt"
+logFile = "logs/log_" + os.path.splitext(os.path.basename(__file__))[0] + ".txt"
+if enableUniqueLogFile:
+	logFile = "logs/log_" \
+			  + os.path.splitext(os.path.basename(__file__))[0] \
+			  + datetime.today().now().strftime("%Y%m%d_%H%M%S") \
+			  + ".txt"
 
 # Progress amount on the progress bar
 progressAudioEncode = 100
 progressMKVProperties = 10
 
-audioCodecAAC = "aac"
+audioCodecAAC = "libfdk_aac"
+
+validBitrates = [x * 32000 for x in range(1, 11)]
 
 
 # =========================== Functions =================================================
+
+
+class AudioCodecProfiles:
+	aac_lc = "aac_low"
+	aac_he = "aac_he"
+	aac_he_v2 = "aac_he_v2"
+	aac_ld = "aac_ld"
+	aac_eld = "aac_eld"
+
 
 class SettingsEpisode:
 	def __init__(
@@ -104,9 +125,27 @@ def logWrite(logStr):
 
 def errorCritical(errorStr):
 	logWrite("Error: " + errorStr)
-	print()
-	print("Error: " + errorStr)
-	exit()
+	raise Exception(errorStr)
+
+
+def getNearestValidBitrate(bitrate):
+	validBitrate = 32000
+	for br in validBitrates:
+		if bitrate - br >= -32000 // 2:
+			validBitrate = br
+		else:
+			break
+
+	return validBitrate
+
+
+def getAudioCodecProfile(codecProfile):
+	if codecProfile == "LC":
+		return AudioCodecProfiles.aac_lc
+	elif codecProfile == "HE-AAC":
+		return AudioCodecProfiles.aac_he
+	else:
+		errorCritical("Unknown audio codec profile: " + codecProfile)
 
 
 def processEpisode(ep):
@@ -122,9 +161,10 @@ def processEpisode(ep):
 	tempFilePath = outputPath + ep.seasonPath + "temp_" + episodeFullTitle + ".mkv"
 
 	audioSpeed = 1.0
-	audioCodec = "aac"
-	amountAudioStreamsVideoFile = 0
-	amountAudioStreamsAudioFile = 0
+	audioCodecs = []
+	audioCodecProfiles = []
+	audioBitrates = []
+	amountAudioStreams = [0, 0]
 
 	# Check if video and audio files exist
 	if os.path.exists(videoFilePath):
@@ -132,65 +172,65 @@ def processEpisode(ep):
 			logWrite("Checking framerate of \"" + videoFilePath + "\"...")
 
 			# Get metadata of video file
-			probeOut = subprocess.check_output([
+			probeOutJson = json.loads(subprocess.check_output([
 				ffprobe,
 				"-v",										# Less output
 				"quiet",
-				"-print_format",							# Set print format to only return values, not keys
-				"default=noprint_wrappers=0:nokey=0",
+				"-print_format",							# Set print format to json
+				"json",
 				"-show_streams",							# Output all entries
 				videoFilePath
-			]).decode("utf-8")								# Decode bytes into text
+			]).decode("utf-8"))								# Decode bytes into text
 
-			probeOut = probeOut.split("\r\n")
-
-			# Count audio streams in file
-			amountAudioStreamsVideoFile = probeOut.count("codec_type=audio")
-
-			# Check video fps and calculate audio speed for additional audio track
-			indexStart = probeOut.index("codec_type=video")
-			indexEnd = probeOut.index("[/STREAM]", indexStart)
-			regex = re.compile(REGEX_AVG_FPS)
-
-			for idx in range(indexStart, indexEnd):
-				regexMatch = regex.match(probeOut[idx])
-				if regexMatch:
-					audioSpeed = (int(regexMatch.group(1)) / int(regexMatch.group(2))) / audioFps
-					break
+			for stream in probeOutJson["streams"]:
+				# Check video fps and calculate audio speed for additional audio track
+				if stream["codec_type"] == "video":
+					avgFps = stream["avg_frame_rate"].split("/")
+					audioSpeed = (int(avgFps[0]) / int(avgFps[1])) / audioFps
+				# Get audio stream info
+				elif stream["codec_type"] == "audio":
+					amountAudioStreams[0] += 1
+					if "bit_rate" in stream and int(stream["bit_rate"]) > 0:
+						audioBitrates.append(getNearestValidBitrate(int(stream["bit_rate"])))
+					elif "tags" in stream and "BPS" in stream["tags"] and int(stream["tags"]["BPS"]) > 0:
+						audioBitrates.append(getNearestValidBitrate(int(stream["tags"]["BPS"])))
+					else:
+						errorCritical("Could not get bitrate of audio stream " + stream["index"] + " in file " + videoFilePath)
+					if stream["codec_name"] == "aac":
+						audioCodecs.append(audioCodecAAC)
+						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
+					else:
+						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file " + videoFilePath)
 
 			logWrite("Checking audio codec of \"" + audioFilePath + "\"...")
 
 			# Get metadata of audio file
-			probeOut = subprocess.check_output([
+			probeOutJson = json.loads(subprocess.check_output([
 				ffprobe,
-				"-v",  										# Less output
+				"-v",										# Less output
 				"quiet",
-				"-print_format", 							# Set print format to only return values, not keys
-				"default=noprint_wrappers=0:nokey=0",
+				"-print_format",							# Set print format to json
+				"json",
 				"-show_streams",							# Output all entries
 				audioFilePath
-			]).decode("utf-8")  # Decode bytes into text
+			]).decode("utf-8"))								# Decode bytes into text
 
-			probeOut = probeOut.split("\r\n")
-
-			# Count audio streams in file
-			amountAudioStreamsAudioFile = probeOut.count("codec_type=audio")
-
-			# Get audio codec
-			regex = re.compile(REGEX_AUDIO_CODEC)
-
-			for element in probeOut:
-				regexMatch = regex.match(element)
-				if regexMatch:
-					if regexMatch.group(1) == "aac":
-						audioCodec = audioCodecAAC
+			for stream in probeOutJson["streams"]:
+				# Get audio stream info
+				if stream["codec_type"] == "audio":
+					amountAudioStreams[1] += 1
+					if "bit_rate" in stream and int(stream["bit_rate"]) > 0:
+						audioBitrates.append(getNearestValidBitrate(int(stream["bit_rate"])))
+					elif "tags" in stream and "BPS" in stream["tags"] and int(stream["tags"]["BPS"]) > 0:
+						audioBitrates.append(getNearestValidBitrate(int(stream["tags"]["BPS"])))
 					else:
-						logWrite(
-							"Audio codec of file \""
-							+ audioFilePath
-							+ "\" does not a specified codec, assuming codec name is identical to ffmpeg naming...")
-						audioCodec = regexMatch.group(1)
-					break
+						errorCritical(
+							"Could not get bitrate of audio stream " + stream["index"] + " in file " + audioFilePath)
+					if stream["codec_name"] == "aac":
+						audioCodecs.append(audioCodecAAC)
+						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
+					else:
+						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file " + audioFilePath)
 
 			logWrite(
 				"Adding audio track \""
@@ -204,50 +244,75 @@ def processEpisode(ep):
 
 			# Add thread progress to dictionary
 			threadProgress[threading.get_ident()] = tqdm(
-				total = (amountAudioStreamsVideoFile * (2 if enableNormalization else 0)
-						 + amountAudioStreamsAudioFile * (3 if enableNormalization else 1))
+				total = (amountAudioStreams[0] * (2 if enableNormalization else 0)
+						 + amountAudioStreams[1] * (3 if enableNormalization else 1))
 						* progressAudioEncode + progressMKVProperties,
 				desc = "Processing \"" + ep.seasonPath + ep.fileVideo + "\"",
 				leave = False
 			)
 
-			# Add additional audio track with offset and speed adjustment
-			process = subprocess.Popen([
+			command = [
 				ffmpeg,
-				"-hide_banner",			# Hide start info
-				#"-loglevel",			# Less output
-				#"error",
-				"-y",					# Override files
-				"-i",					# Input video
+				"-hide_banner",  # Hide start info
+				# "-loglevel",			# Less output
+				# "error",
+				"-y",  					# Override files
+				"-i",  					# Input video
 				videoFilePath,
-				"-ss",					# Skip specified time in next input file
+				"-ss",  				# Skip specified time in next input file
 				ep.audioStart,
-				"-i",					# Input audio
+				"-i",  					# Input audio
 				audioFilePath,
-				"-filter_complex",		# Adjust speed and delay of additional audio track
+				"-filter_complex",  	# Adjust speed and delay of additional audio track
 				"[1:a]adelay=delays=" + ep.audioOffset + ":all=1,atempo=" + str(audioSpeed) + "[out]",
-				"-c:v",					# Copy video stream
-				"copy",
-				"-c:a:0",				# Copy original audio stream
-				"copy",
-				"-c:a:1",				# Re-encode additional audio stream with aac
-				audioCodec,
-				"-c:s",					# Copy subtitles
+				"-c:v",  				# Copy video stream
+				"copy"
+			]
+
+			# Copy all original audio streams
+			for i in range(amountAudioStreams[0]):
+				command.append("-c:a:" + str(i))
+				command.append("copy")
+
+			# Re-encode all additional audio streams
+			for i in range(amountAudioStreams[1]):
+				command.append("-c:a:" + str(i + amountAudioStreams[0]))
+				command.append(str(audioCodecs[amountAudioStreams[0] + i]))
+				command.append("-b:a:" + str(i + amountAudioStreams[0]))
+				command.append(str(audioBitrates[amountAudioStreams[0] + i]))
+
+			command.extend([
+				"-c:s",  				# Copy subtitles
 				"copy",
 				"-map",  				# Use everything from first input file
 				"0",
 				"-map",  				# Use filtered audio
 				"[out]",
-				"-max_interleave_delta",		# Needed for use with subtitles, otherwise audio has buffering issues
-				"0",
-				"-metadata:s:a:0",		# Set audio stream language
+				"-max_interleave_delta",  # Needed for use with subtitles, otherwise audio has buffering issues
+				"0"
+			])
+
+			# Mark all original audio streams as english
+			for i in range(amountAudioStreams[0]):
+				command.append("-metadata:s:a:" + str(i))
+				command.append("language=eng")
+
+			# Mark all additional audio streams as german
+			for i in range(amountAudioStreams[1]):
+				command.append("-metadata:s:a:" + str(i + amountAudioStreams[0]))
+				command.append("language=deu")
+
+			command.extend([
+				"-metadata:s:s:0",  	# Set subtitle stream language
 				"language=eng",
-				"-metadata:s:a:1",		# Set audio stream language
-				"language=deu",
-				"-metadata:s:s:0",		# Set subtitle stream language
-				"language=eng",
-				tempFilePath if enableNormalization else convertedVideoFilePath			# Output video
-			],
+				"-metadata",  			# Set title
+				"title=" + episodeFullTitle,
+				tempFilePath if enableNormalization else convertedVideoFilePath  # Output video
+			])
+
+			# Add additional audio track with offset and speed adjustment
+			process = subprocess.Popen(
+				command,
 				stdout = subprocess.PIPE,
 				stderr = subprocess.STDOUT,
 				universal_newlines = True,
@@ -257,7 +322,7 @@ def processEpisode(ep):
 			captureTotalFrames = False
 			totalFrames = 0
 			percentCounter = 0
-			maxPercent = amountAudioStreamsAudioFile * progressAudioEncode
+			maxPercent = amountAudioStreams[1] * progressAudioEncode
 			regexPatternMediaStream = re.compile(REGEX_MEDIA_STREAM)
 			regexPatternTotalFrames = re.compile(REGEX_TOTAL_FRAMES)
 			regexPatternCurrentFrame = re.compile(REGEX_CURRENT_FRAME)
@@ -329,7 +394,8 @@ def processEpisode(ep):
 				str(normalizedAudioSampleRate),
 				tempFilePath,				# Input file
 				"-c:a",						# Re-encode audio with aac
-				audioCodec,
+				#audioCodec,
+				"aac"
 				"-o",						# Output file
 				convertedVideoFilePath
 			],
@@ -340,8 +406,8 @@ def processEpisode(ep):
 			)
 
 			percentCounter = 0
-			maxPercent = (amountAudioStreamsVideoFile + amountAudioStreamsAudioFile) * progressAudioEncode * 2
-			maxPercentFirstPass = (amountAudioStreamsVideoFile + amountAudioStreamsAudioFile) * progressAudioEncode
+			maxPercent = (amountAudioStreams[0] + amountAudioStreams[1]) * progressAudioEncode * 2
+			maxPercentFirstPass = (amountAudioStreams[0] + amountAudioStreams[1]) * progressAudioEncode
 			regexPatternNormalization = re.compile(REGEX_NORMALIZATION)
 			regexPatternNormalizationSecond = re.compile(REGEX_NORMALIZATION_SECOND)
 
@@ -371,7 +437,7 @@ def processEpisode(ep):
 				regexMatch = regexPatternNormalizationSecond.match(line.strip())
 				if regexMatch:
 					progress = int((int(regexMatch.group(1)) * (progressAudioEncode / 100)) \
-							   * (amountAudioStreamsAudioFile + amountAudioStreamsAudioFile) \
+							   * (amountAudioStreams[1] + amountAudioStreams[1]) \
 							   + maxPercentFirstPass)
 					threadProgress[threading.get_ident()].update(progress - percentCounter)
 					percentCounter = progress
@@ -396,52 +462,53 @@ def processEpisode(ep):
 		else:
 			errorCritical('"' + videoFilePath + "\" does not exist!")
 
-	# Check if output file exists
-	if os.path.exists(convertedVideoFilePath):
-		logWrite("Updating metadata of file \"" + convertedVideoFilePath + "\"...")
+	if enableMKVPropedit:
+		# Check if output file exists
+		if os.path.exists(convertedVideoFilePath):
+			logWrite("Updating metadata of file \"" + convertedVideoFilePath + "\"...")
 
-		# Set title in video file properties
-		process = subprocess.Popen([
-			mkvpropedit,
-			convertedVideoFilePath,
-			"-e",
-			"info",
-			"-s",
-			"title=" + episodeFullTitle,
-			"--add-track-statistics-tags"
-		],
-			stdout = subprocess.PIPE,
-			stderr = subprocess.STDOUT,
-			universal_newlines = True,
-			encoding = "utf-8"
-		)
-
-		percentCounter = 0
-		regexPatternMKVPropEdit = re.compile(REGEX_MKVPROPEDIT)
-
-		# Decode output from mkvpropedit
-		for line in process.stdout:
-			# Get percentage
-			regexMatch = regexPatternMKVPropEdit.match(line.strip())
-			if regexMatch:
-				progress = int(int(regexMatch.group(1)) * (progressMKVProperties / 100))
-				threadProgress[threading.get_ident()].update(progress - percentCounter)
-				percentCounter = progress
-
-		# Wait for process to finish
-		process.wait()
-
-		# Check exit code
-		if process.returncode:
-			errorCritical(
-				"Failed to update metadata of file \""
-				+ convertedVideoFilePath
-				+ "\"! Exiting..."
+			# Set title in video file properties
+			process = subprocess.Popen([
+				mkvpropedit,
+				convertedVideoFilePath,
+				"-e",
+				"info",
+				"-s",
+				"title=" + episodeFullTitle,
+				"--add-track-statistics-tags"
+			],
+				stdout = subprocess.PIPE,
+				stderr = subprocess.STDOUT,
+				universal_newlines = True,
+				encoding = "utf-8"
 			)
 
-		# Add any missing percent value to progress bar
-		threadProgress[threading.get_ident()].update(progressMKVProperties - percentCounter)
-		threadProgress[threading.get_ident()].refresh()
+			percentCounter = 0
+			regexPatternMKVPropEdit = re.compile(REGEX_MKVPROPEDIT)
+
+			# Decode output from mkvpropedit
+			for line in process.stdout:
+				# Get percentage
+				regexMatch = regexPatternMKVPropEdit.match(line.strip())
+				if regexMatch:
+					progress = int(int(regexMatch.group(1)) * (progressMKVProperties / 100))
+					threadProgress[threading.get_ident()].update(progress - percentCounter)
+					percentCounter = progress
+
+			# Wait for process to finish
+			process.wait()
+
+			# Check exit code
+			if process.returncode:
+				errorCritical(
+					"Failed to update metadata of file \""
+					+ convertedVideoFilePath
+					+ "\"! Exiting..."
+				)
+
+			# Add any missing percent value to progress bar
+			threadProgress[threading.get_ident()].update(progressMKVProperties - percentCounter)
+			threadProgress[threading.get_ident()].refresh()
 
 	# Remove thread progress from dictionary since thread is finished now
 	threadProgress[threading.get_ident()].close()
