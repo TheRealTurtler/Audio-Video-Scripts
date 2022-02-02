@@ -414,9 +414,6 @@ def processEpisode(ep):
 # Create thread lock
 threadLock = threading.Lock()
 
-# Clear log file
-open(logFile, 'w').close()
-
 # Write name of script to log file
 logWrite("This is " + os.path.basename(__file__))
 
