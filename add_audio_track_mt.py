@@ -13,7 +13,7 @@ import re
 # Empty list selects all seasons (specify as string)
 seasons = ["01"]
 # Empty list selects all episodes (specify as string)
-episodes = []
+episodes = ["01"]
 
 # Input path containing different season folders and info.xml
 inputPath = "E:/Filme/JDownloader/Stargate Atlantis/"
@@ -25,6 +25,9 @@ titleLanguage = "DE"
 
 # Normalize audio
 enableNormalization = True
+loudnessTarget = -23.0		# EBU recommendation
+loudnessTruePeak = -1.0		# EBU limit
+loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra
 
 # Enable logging to file
 enableLogFile = False
@@ -98,6 +101,7 @@ def logWrite(logStr):
 
 def errorCritical(errorStr):
 	logWrite("Error: " + errorStr)
+	print()
 	print("Error: " + errorStr)
 	exit()
 
@@ -194,7 +198,7 @@ def processEpisode(ep):
 						 + amountAudioStreamsAudioFile * (3 if enableNormalization else 1))
 						* progressAudioEncode + progressMKVProperties,
 				desc = "Processing \"" + ep.seasonPath + ep.fileVideo + "\"",
-				leave = True
+				leave = False
 			)
 
 			# Add additional audio track with offset and speed adjustment
@@ -208,8 +212,8 @@ def processEpisode(ep):
 				videoFilePath,
 				"-ss",					# Skip to .. in next input file
 				ep.audioStart,
-				"-itsoffset",			# Apply offset to next input file
-				ep.audioOffset,
+				#"-itsoffset",			# Apply offset to next input file
+				#ep.audioOffset,
 				"-i",					# Input audio
 				audioFilePath,
 				"-c:v",					# Copy video stream
@@ -220,16 +224,19 @@ def processEpisode(ep):
 				audioCodec,
 				"-c:s",					# Copy subtitles
 				"copy",
-				"-map",					# Use everything from first input file
+				"-filter_complex",
+				"[1:a]adelay=delays=" + ep.audioOffset + ":all=1,atempo=" + str(audioSpeed) + "[out]",
+				#"-filter:a:1",			# Adjust speed of audio stream 1 (additional audio)
+				#"atempo=" + str(audioSpeed),
+				"-map",  # Use everything from first input file
 				"0",
-				"-map",					# Use only audio from second input file
-				"1:a",
-				"-filter:a:1",			# Adjust speed of audio stream 1 (additional audio)
-				"atempo=" + str(audioSpeed),
+				"-map",  # Use only audio from second input file
+				#"1:a",
+				"[out]",
 				"-metadata:s:a:0",		# Set audio stream language
 				"language=eng",
 				"-metadata:s:a:1",		# Set audio stream language
-				"language=de",
+				"language=deu",
 				"-metadata:s:s:0",		# Set subtitle stream language
 				"language=eng",
 				tempFilePath if enableNormalization else convertedVideoFilePath			# Output video
@@ -293,6 +300,12 @@ def processEpisode(ep):
 				"-q",						# Quiet
 				"-pr",						# Show progress bar
 				"-f",						# Overwrite files
+				"-t",						# Loudness target
+				str(loudnessTarget),
+				"-lrt",						# Loudness range
+				str(loudnessRange),
+				"-tp",						# Loudness true peak
+				str(loudnessTruePeak),
 				tempFilePath,				# Input file
 				"-c:a",						# Re-encode audio with aac
 				audioCodec,
@@ -470,11 +483,16 @@ for season in root_node.findall("Season"):
 		))
 
 pool = ThreadPool(MAX_THREADS)
-results = []
+jobs = []
 
 while episodeSettings:
 	es = episodeSettings.pop()
-	results.append(pool.apply_async(processEpisode, (es,)))
+	jobs.append(pool.apply_async(processEpisode, (es,)))
 
 pool.close()
+
+result_list_progressBar = []
+for job in tqdm(jobs, desc = "Processing Episodes"):
+	result_list_progressBar.append(job.get())
+
 pool.join()
