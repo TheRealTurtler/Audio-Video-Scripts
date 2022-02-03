@@ -15,7 +15,7 @@ import json
 # Empty list selects all seasons (specify as string)
 seasons = ["01"]
 # Empty list selects all episodes (specify as string)
-episodes = ["01"]
+episodes = ["03"]
 
 # Input path containing different season folders and info.xml
 inputPath = "E:/Filme/JDownloader/Stargate Atlantis/"
@@ -30,7 +30,7 @@ titleLanguage = "DE"
 enableNormalization = False
 loudnessTarget = -23.0		# EBU recommendation: (-23.0)
 loudnessTruePeak = -1.0		# EBU limit (-1.0)
-loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
+loudnessRange = 20.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
 normalizedAudioSampleRate = 96000		# EBU normalization overrides input sample rate to 192kHz, down-sample to 96kHz (96000)		// TODO
 
 # Set file metadata using MKVPropedit
@@ -59,6 +59,7 @@ mkvpropedit = "mkvpropedit.exe"
 REGEX_MEDIA_STREAM = r"Stream #(\d+):(\d+):\s*Video:"
 REGEX_TOTAL_FRAMES = r"NUMBER_OF_FRAMES\s*:\s*(\d+)"
 REGEX_CURRENT_FRAME = r"frame\s*=\s*(\d+)"
+REGEX_LOUDNORM = r"\[Parsed_loudnorm_(\d+)"
 
 REGEX_NORMALIZATION = r"Stream\s*(\d+)/(\d+):\s*(\d+)%"
 REGEX_NORMALIZATION_SECOND = r"Second Pass\s*:\s*(\d+)%"
@@ -172,7 +173,7 @@ def processEpisode(ep):
 			logWrite("Checking framerate of \"" + videoFilePath + "\"...")
 
 			# Get metadata of video file
-			probeOutJson = json.loads(subprocess.check_output([
+			processOutJson = json.loads(subprocess.check_output([
 				ffprobe,
 				"-v",										# Less output
 				"quiet",
@@ -182,7 +183,7 @@ def processEpisode(ep):
 				videoFilePath
 			]).decode("utf-8"))								# Decode bytes into text
 
-			for stream in probeOutJson["streams"]:
+			for stream in processOutJson["streams"]:
 				# Check video fps and calculate audio speed for additional audio track
 				if stream["codec_type"] == "video":
 					avgFps = stream["avg_frame_rate"].split("/")
@@ -205,7 +206,7 @@ def processEpisode(ep):
 			logWrite("Checking audio codec of \"" + audioFilePath + "\"...")
 
 			# Get metadata of audio file
-			probeOutJson = json.loads(subprocess.check_output([
+			processOutJson = json.loads(subprocess.check_output([
 				ffprobe,
 				"-v",										# Less output
 				"quiet",
@@ -215,7 +216,7 @@ def processEpisode(ep):
 				audioFilePath
 			]).decode("utf-8"))								# Decode bytes into text
 
-			for stream in probeOutJson["streams"]:
+			for stream in processOutJson["streams"]:
 				# Get audio stream info
 				if stream["codec_type"] == "audio":
 					amountAudioStreams[1] += 1
@@ -253,7 +254,143 @@ def processEpisode(ep):
 
 			command = [
 				ffmpeg,
+				"-hide_banner",			# Hide start info
+				# "-loglevel",			# Less output
+				# "error",
+				"-c:a",
+				audioCodecs[0],
+				"-i",					# Input video
+				videoFilePath,
+				"-ss",					# Skip specified time in next input file
+				ep.audioStart,
+				"-c:a",
+				audioCodecs[1],
+				"-i",					# Input audio
+				audioFilePath,
+				"-filter_complex",		# Adjust speed and delay of additional audio track
+				"[0:a]"
+				+ "loudnorm="
+				+ "I=" + str(loudnessTarget)
+				+ ":LRA=" + str(loudnessRange)
+				+ ":TP=" + str(loudnessTruePeak)
+				+ ":print_format=json;"
+				+ "[1:a]"
+				+ "loudnorm="
+				+ "I=" + str(loudnessTarget)
+				+ ":LRA=" + str(loudnessRange)
+				+ ":TP=" + str(loudnessTruePeak)
+				+ ":print_format=json",
+				"-vn",
+				"-f",					# Only analyze file, don't create any output
+				"null",
+				"-"
+			]
+
+			# Analyze loudness of audio tracks
+			process = subprocess.Popen(
+				command,
+				stdout = subprocess.PIPE,
+				stderr = subprocess.STDOUT,
+				universal_newlines = True,
+				encoding = "utf-8"
+			)
+
+			# TODO: progress bar (extra function)
+			regexPattern = re.compile(REGEX_LOUDNORM)
+
+			jsonStrings = []
+			i = 0
+			processFinished = False
+
+			# Decode output of ffmpeg
+			for line in process.stdout:
+				print(line.strip())
+				regexMatch = regexPattern.match(line.strip())
+				if regexMatch:
+					i = int(regexMatch.group(1))
+					jsonStrings.append("")
+					processFinished = True
+				elif processFinished:
+					jsonStrings[i] += line
+
+			process.wait()
+
+			processOutJson = []
+
+			for jsonString in jsonStrings:
+				processOutJson.append(json.loads(jsonString))
+
+			command = [
+				ffmpeg,
 				"-hide_banner",  # Hide start info
+				# "-loglevel",			# Less output
+				# "error",
+				"-c:a",
+				audioCodecs[0],
+				"-i",  # Input video
+				videoFilePath,
+				"-ss",  # Skip specified time in next input file
+				ep.audioStart,
+				"-c:a",
+				audioCodecs[1],
+				"-i",  # Input audio
+				audioFilePath,
+				"-filter_complex",  # Adjust speed and delay of additional audio track
+				"[0:a]"
+				+ "loudnorm="
+				+ "I="					+ str(loudnessTarget)
+				+ ":LRA="				+ str(loudnessRange)
+				+ ":TP="				+ str(loudnessTruePeak)
+				+ ":measured_I="		+ processOutJson[0]["input_i"]
+				+ ":measured_LRA="		+ processOutJson[0]["input_lra"]
+				+ ":measured_TP="		+ processOutJson[0]["input_tp"]
+				+ ":measured_thresh="	+ processOutJson[0]["input_thresh"]
+				+ ":offset="			+ processOutJson[0]["target_offset"]
+				+ ":linear=true"
+				+ ":print_format=summary;"
+				+ "[1:a]"
+				+ "loudnorm="
+				+ "I="					+ str(loudnessTarget)
+				+ ":LRA="				+ str(loudnessRange)
+				+ ":TP="				+ str(loudnessTruePeak)
+				+ ":measured_I="		+ processOutJson[1]["input_i"]
+				+ ":measured_LRA="		+ processOutJson[1]["input_lra"]
+				+ ":measured_TP="		+ processOutJson[1]["input_tp"]
+				+ ":measured_thresh="	+ processOutJson[1]["input_thresh"]
+				+ ":offset="			+ processOutJson[1]["target_offset"]
+				+ ":linear=true"
+				+ ":print_format=summary",
+				"-vn",
+				"-f",  # Only analyze file, don't create any output
+				"null",
+				"-"
+			]
+
+			process = subprocess.Popen(
+				command,
+				stdout = subprocess.PIPE,
+				stderr = subprocess.STDOUT,
+				universal_newlines = True,
+				encoding = "utf-8"
+			)
+
+			# Decode output of ffmpeg
+			for line in process.stdout:
+				print(line.strip())
+
+			process.wait()
+
+			# TODO: Check if normalization was successful (all audio streams were normalized linearly, not dynamically)
+			# TODO: Parse output
+			# TODO: Progress bar
+			# TODO: Combine with atempo and adelay
+			# TODO: Generalize for multiple audio streams per file
+
+			raise Exception("Halt!")
+
+			command = [
+				ffmpeg,
+				"-hide_banner",			# Hide start info
 				# "-loglevel",			# Less output
 				# "error",
 				"-y",  					# Override files
@@ -264,7 +401,7 @@ def processEpisode(ep):
 				"-i",  					# Input audio
 				audioFilePath,
 				"-filter_complex",  	# Adjust speed and delay of additional audio track
-				"[1:a]adelay=delays=" + ep.audioOffset + ":all=1,atempo=" + str(audioSpeed) + "[out]",
+				"[1:a]adelay=delays=" + ep.audioOffset + ":all=true,atempo=" + str(audioSpeed) + "[out]",
 				"-c:v",  				# Copy video stream
 				"copy"
 			]
@@ -516,6 +653,10 @@ def processEpisode(ep):
 
 
 # =========================== Start of Script ===========================================
+
+# Clear log file
+if enableUniqueLogFile:
+	open(logFile, 'w').close()
 
 # Create thread lock
 threadLock = threading.Lock()
