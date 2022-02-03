@@ -30,8 +30,7 @@ titleLanguage = "DE"
 enableNormalization = False
 loudnessTarget = -23.0		# EBU recommendation: (-23.0)
 loudnessTruePeak = -1.0		# EBU limit (-1.0)
-loudnessRange = 20.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
-normalizedAudioSampleRate = 96000		# EBU normalization overrides input sample rate to 192kHz, down-sample to 96kHz (96000)		// TODO
+loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
 
 # Set file metadata using MKVPropedit
 # TODO: remove mkvpropedit
@@ -79,6 +78,10 @@ progressAudioEncode = 100
 progressMKVProperties = 10
 
 audioCodecAAC = "libfdk_aac"
+
+# Audio resampler (swr or soxr)
+audioResampler = "soxr"
+audioResamplerPrecision = 28		# Only used with soxr HQ = 20, vHQ = 28
 
 validBitrates = [x * 32000 for x in range(1, 11)]
 
@@ -164,7 +167,8 @@ def processEpisode(ep):
 	audioSpeed = 1.0
 	audioCodecs = []
 	audioCodecProfiles = []
-	audioBitrates = []
+	audioBitRates = []
+	audioSampleRates = []
 	amountAudioStreams = [0, 0]
 
 	# Check if video and audio files exist
@@ -191,17 +195,27 @@ def processEpisode(ep):
 				# Get audio stream info
 				elif stream["codec_type"] == "audio":
 					amountAudioStreams[0] += 1
-					if "bit_rate" in stream and int(stream["bit_rate"]) > 0:
-						audioBitrates.append(getNearestValidBitrate(int(stream["bit_rate"])))
-					elif "tags" in stream and "BPS" in stream["tags"] and int(stream["tags"]["BPS"]) > 0:
-						audioBitrates.append(getNearestValidBitrate(int(stream["tags"]["BPS"])))
+
+					# Get samplerate
+					if "sample_rate" in stream and int(stream["sample_rate"]) > 0:
+						audioSampleRates.append(int(stream["sample_rate"]))
 					else:
-						errorCritical("Could not get bitrate of audio stream " + stream["index"] + " in file " + videoFilePath)
+						errorCritical("Could not get samplerate of audio stream " + stream["index"] + " in file \"" + videoFilePath + "\"")
+
+					# Get bitrate
+					if "bit_rate" in stream and int(stream["bit_rate"]) > 0:
+						audioBitRates.append(getNearestValidBitrate(int(stream["bit_rate"])))
+					elif "tags" in stream and "BPS" in stream["tags"] and int(stream["tags"]["BPS"]) > 0:
+						audioBitRates.append(getNearestValidBitrate(int(stream["tags"]["BPS"])))
+					else:
+						errorCritical("Could not get bitrate of audio stream " + stream["index"] + " in file \"" + videoFilePath + "\"")
+
+					# Get audio codec and profile
 					if stream["codec_name"] == "aac":
 						audioCodecs.append(audioCodecAAC)
 						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
 					else:
-						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file " + videoFilePath)
+						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file \"" + videoFilePath + "\"")
 
 			logWrite("Checking audio codec of \"" + audioFilePath + "\"...")
 
@@ -220,18 +234,27 @@ def processEpisode(ep):
 				# Get audio stream info
 				if stream["codec_type"] == "audio":
 					amountAudioStreams[1] += 1
-					if "bit_rate" in stream and int(stream["bit_rate"]) > 0:
-						audioBitrates.append(getNearestValidBitrate(int(stream["bit_rate"])))
-					elif "tags" in stream and "BPS" in stream["tags"] and int(stream["tags"]["BPS"]) > 0:
-						audioBitrates.append(getNearestValidBitrate(int(stream["tags"]["BPS"])))
+
+					# Get samplerate
+					if "sample_rate" in stream and int(stream["sample_rate"]) > 0:
+						audioSampleRates.append(int(stream["sample_rate"]))
 					else:
-						errorCritical(
-							"Could not get bitrate of audio stream " + stream["index"] + " in file " + audioFilePath)
+						errorCritical("Could not get samplerate of audio stream " + stream["index"] + " in file \"" + audioFilePath + "\"")
+
+					# Get bitrate
+					if "bit_rate" in stream and int(stream["bit_rate"]) > 0:
+						audioBitRates.append(getNearestValidBitrate(int(stream["bit_rate"])))
+					elif "tags" in stream and "BPS" in stream["tags"] and int(stream["tags"]["BPS"]) > 0:
+						audioBitRates.append(getNearestValidBitrate(int(stream["tags"]["BPS"])))
+					else:
+						errorCritical("Could not get bitrate of audio stream " + stream["index"] + " in file \"" + audioFilePath + "\"")
+
+					# Get codec and profile
 					if stream["codec_name"] == "aac":
 						audioCodecs.append(audioCodecAAC)
 						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
 					else:
-						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file " + audioFilePath)
+						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file \"" + audioFilePath + "\"")
 
 			logWrite(
 				"Adding audio track \""
@@ -252,41 +275,231 @@ def processEpisode(ep):
 				leave = False
 			)
 
+			if enableNormalization:
+				command = [
+					ffmpeg,
+					"-hide_banner",			# Hide start info
+				]
+
+				# Set codecs for all audio streams in first input file
+				# FDK AAC seams to be bugged as decoder (removes silence and sets timestamps, but fails for the english audio)
+				# for idxStream in range(amountAudioStreams[0]):
+				# 	command.append("-c:a:" + str(idxStream))
+				# 	command.append(audioCodecs[idxStream])
+
+				command.extend([
+					"-i",					# Input video
+					videoFilePath,
+				])
+
+				# Set codecs for all audio streams in second input file
+				# FDK AAC seams to be bugged as decoder (removes silence and sets timestamps, but fails for the english audio)
+				# for idxStream in range(amountAudioStreams[1]):
+				# 	command.append("-c:a:" + str(idxStream))
+				# 	command.append(audioCodecs[idxStream + amountAudioStreams[0]])
+
+				command.extend([
+					"-ss",					# Skip specified time in next input file
+					ep.audioStart,
+					"-i",					# Input audio
+					audioFilePath,
+				])
+
+				if enableNormalization:
+					command.append("-filter_complex")
+					filterStr = ""
+
+					# Filter all audio streams of the two input files
+					for idxFile in range(2):
+						for idxStream in range(amountAudioStreams[idxFile]):
+							filterStr += "[" + str(idxFile) + ":a:" + str(idxStream) + "]"
+							filterStr += "loudnorm="
+							filterStr += "I="		+ str(loudnessTarget)
+							filterStr += ":LRA="	+ str(loudnessRange)
+							filterStr += ":TP="		+ str(loudnessTruePeak)
+							filterStr += ":print_format=json;"
+
+					# Remove last ';'
+					filterStr = filterStr[:-1]
+
+					# Add filter to command
+					command.append(filterStr)
+
+					command.extend([
+						# No output codec needed, output is discarded anyway and measured values stay the same
+						"-vn",					# Discard video
+						"-f",					# Only analyze file, don't create any output
+						"null",
+						"-"
+					])
+
+					# Analyze loudness of audio tracks
+					process = subprocess.Popen(
+						command,
+						stdout = subprocess.PIPE,
+						stderr = subprocess.STDOUT,
+						universal_newlines = True,
+						encoding = "utf-8"
+					)
+
+					# TODO: progress bar (extra function?)
+					regexPattern = re.compile(REGEX_LOUDNORM)
+
+					jsonStrings = []
+					i = -1
+					processFinished = False
+
+					# Decode output of ffmpeg
+					for line in process.stdout:
+						print(line.strip())
+						regexMatch = regexPattern.match(line.strip())
+						if regexMatch:
+							i += 1
+							jsonStrings.append("")
+							processFinished = True
+						elif processFinished:
+							jsonStrings[i] += line
+
+					# Wait for process to finish
+					process.wait()
+
+					# Decode json output
+					processOutJson = []
+					for jsonString in jsonStrings:
+						processOutJson.append(json.loads(jsonString))
+
 			command = [
 				ffmpeg,
 				"-hide_banner",			# Hide start info
-				# "-loglevel",			# Less output
-				# "error",
-				"-c:a",
-				audioCodecs[0],
-				"-i",					# Input video
-				videoFilePath,
-				"-ss",					# Skip specified time in next input file
-				ep.audioStart,
-				"-c:a",
-				audioCodecs[1],
-				"-i",					# Input audio
-				audioFilePath,
-				"-filter_complex",		# Adjust speed and delay of additional audio track
-				"[0:a]"
-				+ "loudnorm="
-				+ "I=" + str(loudnessTarget)
-				+ ":LRA=" + str(loudnessRange)
-				+ ":TP=" + str(loudnessTruePeak)
-				+ ":print_format=json;"
-				+ "[1:a]"
-				+ "loudnorm="
-				+ "I=" + str(loudnessTarget)
-				+ ":LRA=" + str(loudnessRange)
-				+ ":TP=" + str(loudnessTruePeak)
-				+ ":print_format=json",
-				"-vn",
-				"-f",					# Only analyze file, don't create any output
-				"null",
-				"-"
+				"-y"					# Overwrite existing files
 			]
 
-			# Analyze loudness of audio tracks
+			# Set codecs for all audio streams in first input file
+			# FDK AAC seams to be bugged as decoder (removes silence and sets timestamps, but fails for the english audio)
+			# for idxStream in range(amountAudioStreams[0]):
+			# 	command.append("-c:a:" + str(idxStream))
+			# 	command.append(audioCodecs[idxStream])
+
+			command.extend([
+				"-i",					# Input video
+				videoFilePath,
+			])
+
+			# Set codecs for all audio streams in second input file
+			# FDK AAC seams to be bugged as decoder (removes silence and sets timestamps, but fails for the english audio)
+			# for idxStream in range(amountAudioStreams[1]):
+			# 	command.append("-c:a:" + str(idxStream))
+			# 	command.append(audioCodecs[idxStream + amountAudioStreams[0]])
+
+			command.extend([
+				"-ss",					# Skip specified time in next input file
+				ep.audioStart,
+				"-i",					# Input audio
+				audioFilePath,
+				"-filter_complex"		# Apply complex filter
+			])
+
+			# Filter all audio streams of the two input files
+			filterStr = ""
+			for idxFile in range(0 if enableNormalization else 1, 2):
+				for idxStream in range(amountAudioStreams[idxFile]):
+					idxStreamOut = idxFile * amountAudioStreams[0] + idxStream
+					filterStr += "[" + str(idxFile) + ":a:" + str(idxStream) + "]"
+					if enableNormalization:
+						filterStr += "loudnorm="
+						filterStr += "I="					+ str(loudnessTarget)
+						filterStr += ":LRA="				+ str(loudnessRange)
+						filterStr += ":TP="					+ str(loudnessTruePeak)
+						filterStr += ":measured_I="			+ processOutJson[idxStreamOut]["input_i"]
+						filterStr += ":measured_LRA="		+ processOutJson[idxStreamOut]["input_lra"]
+						filterStr += ":measured_TP="		+ processOutJson[idxStreamOut]["input_tp"]
+						filterStr += ":measured_thresh="	+ processOutJson[idxStreamOut]["input_thresh"]
+						filterStr += ":offset="				+ processOutJson[idxStreamOut]["target_offset"]
+						filterStr += ":linear=true"
+						filterStr += ":print_format=json"
+						filterStr += ",aresample="
+						filterStr += "resampler="			+ audioResampler
+						filterStr += ":out_sample_rate="	+ str(audioSampleRates[idxStreamOut])
+						if audioResampler == "soxr":
+							filterStr += ":precision="		+ str(audioResamplerPrecision)
+					if idxFile == 1:
+						if enableNormalization:
+							filterStr += ","
+						filterStr += "atempo="				+ str(audioSpeed)
+						filterStr += ",adelay=delays="		+ ep.audioOffset
+						filterStr += ":all=true"
+					filterStr += "[out"						+ str(idxStreamOut)
+					filterStr += "];"
+
+			# Remove last ';'
+			filterStr = filterStr[:-1]
+
+			# Add filter to command
+			command.append(filterStr)
+
+			# Set audio codec, profile and bitrate
+			for idxFile in range(2):
+				for idxStream in range(amountAudioStreams[idxFile]):
+					idxStreamOut = idxStream + idxFile * amountAudioStreams[idxFile]
+					command.append("-c:a:" + str(idxStreamOut))
+					if idxFile == 0 and not enableNormalization:
+						command.append("copy")
+					else:
+						command.append(audioCodecs[idxStreamOut])
+						command.append("-profile:a:" + str(idxStreamOut))
+						command.append(audioCodecProfiles[idxStreamOut])
+						command.append("-b:a:" + str(idxStreamOut))
+						command.append(str(audioBitRates[idxStreamOut]))
+
+			command.extend([
+				"-c:v",					# Copy video
+				"copy",
+				"-c:s",					# Copy subtitles
+				"copy",
+				"-map",					# Map video from first input file to output
+				"0:v",
+			])
+
+			# Map all filtered audio and corresponding metadata to output
+			for idxFile in range(2):
+				for idxStream in range(amountAudioStreams[idxFile]):
+					idxStreamOut = idxStream + idxFile * amountAudioStreams[idxFile]
+					if idxFile == 0 and not enableNormalization:
+						command.append("-map")
+						command.append(str(idxFile) + ":a:" + str(idxStream))
+					else:
+						command.append("-map")
+						command.append("[out" + str(idxStreamOut) + "]")
+					command.append("-map_metadata:s:a:" + str(idxStreamOut))
+					command.append(str(idxFile) + ":s:a:" + str(idxStream))
+
+			command.extend([
+				"-map",						# Map subtitles from first input file to output
+				"0:s",
+				"-map_metadata:g",			# Map global metadata to output
+				"0:g",
+				# "-max_interleave_delta",	# Needed for use with subtitles, otherwise audio has buffering issues
+				# "0"						# TODO: check if this is still needed
+			])
+
+			# Mark all original audio streams as english
+			for idxStream in range(amountAudioStreams[0]):
+				command.append("-metadata:s:a:" + str(idxStream))
+				command.append("language=eng")
+
+			# Mark all additional audio streams as german
+			for idxStream in range(amountAudioStreams[1]):
+				command.append("-metadata:s:a:" + str(idxStream + amountAudioStreams[0]))
+				command.append("language=deu")
+
+			command.extend([
+				"-metadata:s:s:0",		# Set subtitle stream language
+				"language=eng",
+				"-metadata",			# Set title
+				"title=" + episodeFullTitle,
+				tempFilePath if enableNormalization else convertedVideoFilePath		# Output video
+			])
+
 			process = subprocess.Popen(
 				command,
 				stdout = subprocess.PIPE,
@@ -295,157 +508,112 @@ def processEpisode(ep):
 				encoding = "utf-8"
 			)
 
-			# TODO: progress bar (extra function)
+			# TODO: progress bar (extra function?)
 			regexPattern = re.compile(REGEX_LOUDNORM)
 
 			jsonStrings = []
-			i = 0
+			i = -1
 			processFinished = False
 
 			# Decode output of ffmpeg
 			for line in process.stdout:
 				print(line.strip())
-				regexMatch = regexPattern.match(line.strip())
-				if regexMatch:
-					i = int(regexMatch.group(1))
-					jsonStrings.append("")
-					processFinished = True
-				elif processFinished:
-					jsonStrings[i] += line
+				if enableNormalization:
+					regexMatch = regexPattern.match(line.strip())
+					if regexMatch:
+						i += 1
+						jsonStrings.append("")
+						processFinished = True
+					elif processFinished:
+						jsonStrings[i] += line
 
 			process.wait()
 
-			processOutJson = []
+			if enableNormalization:
+				processOutJson = []
+				for jsonString in jsonStrings:
+					processOutJson.append(json.loads(jsonString))
 
-			for jsonString in jsonStrings:
-				processOutJson.append(json.loads(jsonString))
-
-			command = [
-				ffmpeg,
-				"-hide_banner",  # Hide start info
-				# "-loglevel",			# Less output
-				# "error",
-				"-c:a",
-				audioCodecs[0],
-				"-i",  # Input video
-				videoFilePath,
-				"-ss",  # Skip specified time in next input file
-				ep.audioStart,
-				"-c:a",
-				audioCodecs[1],
-				"-i",  # Input audio
-				audioFilePath,
-				"-filter_complex",  # Adjust speed and delay of additional audio track
-				"[0:a]"
-				+ "loudnorm="
-				+ "I="					+ str(loudnessTarget)
-				+ ":LRA="				+ str(loudnessRange)
-				+ ":TP="				+ str(loudnessTruePeak)
-				+ ":measured_I="		+ processOutJson[0]["input_i"]
-				+ ":measured_LRA="		+ processOutJson[0]["input_lra"]
-				+ ":measured_TP="		+ processOutJson[0]["input_tp"]
-				+ ":measured_thresh="	+ processOutJson[0]["input_thresh"]
-				+ ":offset="			+ processOutJson[0]["target_offset"]
-				+ ":linear=true"
-				+ ":print_format=summary;"
-				+ "[1:a]"
-				+ "loudnorm="
-				+ "I="					+ str(loudnessTarget)
-				+ ":LRA="				+ str(loudnessRange)
-				+ ":TP="				+ str(loudnessTruePeak)
-				+ ":measured_I="		+ processOutJson[1]["input_i"]
-				+ ":measured_LRA="		+ processOutJson[1]["input_lra"]
-				+ ":measured_TP="		+ processOutJson[1]["input_tp"]
-				+ ":measured_thresh="	+ processOutJson[1]["input_thresh"]
-				+ ":offset="			+ processOutJson[1]["target_offset"]
-				+ ":linear=true"
-				+ ":print_format=summary",
-				"-vn",
-				"-f",  # Only analyze file, don't create any output
-				"null",
-				"-"
-			]
-
-			process = subprocess.Popen(
-				command,
-				stdout = subprocess.PIPE,
-				stderr = subprocess.STDOUT,
-				universal_newlines = True,
-				encoding = "utf-8"
-			)
-
-			# Decode output of ffmpeg
-			for line in process.stdout:
-				print(line.strip())
-
-			process.wait()
+				# for idxStream, outJson in enumerate(processOutJson):
+				# 	if outJson["normalization_type"] != "linear":
+				# 		if idxStream < amountAudioStreams[0]:
+				# 			errorCritical(
+				# 				"Unable to normalize audio stream "
+				# 				+ str(idxStream)
+				# 				+ " in file \"" + videoFilePath + "\"!"
+				# 			)
+				# 		else:
+				# 			errorCritical(
+				# 				"Unable to normalize audio stream "
+				# 				+ str(idxStream - amountAudioStreams[0])
+				# 				+ " in file \""
+				# 				+ audioFilePath + "\"!"
+				# 			)
 
 			# TODO: Check if normalization was successful (all audio streams were normalized linearly, not dynamically)
 			# TODO: Parse output
 			# TODO: Progress bar
-			# TODO: Combine with atempo and adelay
-			# TODO: Generalize for multiple audio streams per file
 
-			raise Exception("Halt!")
+			raise Exception("DEBUG")
 
-			command = [
-				ffmpeg,
-				"-hide_banner",			# Hide start info
-				# "-loglevel",			# Less output
-				# "error",
-				"-y",  					# Override files
-				"-i",  					# Input video
-				videoFilePath,
-				"-ss",  				# Skip specified time in next input file
-				ep.audioStart,
-				"-i",  					# Input audio
-				audioFilePath,
-				"-filter_complex",  	# Adjust speed and delay of additional audio track
-				"[1:a]adelay=delays=" + ep.audioOffset + ":all=true,atempo=" + str(audioSpeed) + "[out]",
-				"-c:v",  				# Copy video stream
-				"copy"
-			]
+			# command = [
+			# 	ffmpeg,
+			# 	"-hide_banner",			# Hide start info
+			# 	# "-loglevel",			# Less output
+			# 	# "error",
+			# 	"-y",  					# Override files
+			# 	"-i",  					# Input video
+			# 	videoFilePath,
+			# 	"-ss",  				# Skip specified time in next input file
+			# 	ep.audioStart,
+			# 	"-i",  					# Input audio
+			# 	audioFilePath,
+			# 	"-filter_complex",  	# Adjust speed and delay of additional audio track
+			# 	"[1:a]adelay=delays=" + ep.audioOffset + ":all=true,atempo=" + str(audioSpeed) + "[out]",
+			# 	"-c:v",  				# Copy video stream
+			# 	"copy"
+			# ]
 
-			# Copy all original audio streams
-			for i in range(amountAudioStreams[0]):
-				command.append("-c:a:" + str(i))
-				command.append("copy")
+			# # Copy all original audio streams
+			# for i in range(amountAudioStreams[0]):
+			# 	command.append("-c:a:" + str(i))
+			# 	command.append("copy")
+			#
+			# # Re-encode all additional audio streams
+			# for i in range(amountAudioStreams[1]):
+			# 	command.append("-c:a:" + str(i + amountAudioStreams[0]))
+			# 	command.append(str(audioCodecs[amountAudioStreams[0] + i]))
+			# 	command.append("-b:a:" + str(i + amountAudioStreams[0]))
+			# 	command.append(str(audioBitRates[amountAudioStreams[0] + i]))
 
-			# Re-encode all additional audio streams
-			for i in range(amountAudioStreams[1]):
-				command.append("-c:a:" + str(i + amountAudioStreams[0]))
-				command.append(str(audioCodecs[amountAudioStreams[0] + i]))
-				command.append("-b:a:" + str(i + amountAudioStreams[0]))
-				command.append(str(audioBitrates[amountAudioStreams[0] + i]))
-
-			command.extend([
-				"-c:s",  				# Copy subtitles
-				"copy",
-				"-map",  				# Use everything from first input file
-				"0",
-				"-map",  				# Use filtered audio
-				"[out]",
-				"-max_interleave_delta",  # Needed for use with subtitles, otherwise audio has buffering issues
-				"0"
-			])
-
-			# Mark all original audio streams as english
-			for i in range(amountAudioStreams[0]):
-				command.append("-metadata:s:a:" + str(i))
-				command.append("language=eng")
-
-			# Mark all additional audio streams as german
-			for i in range(amountAudioStreams[1]):
-				command.append("-metadata:s:a:" + str(i + amountAudioStreams[0]))
-				command.append("language=deu")
-
-			command.extend([
-				"-metadata:s:s:0",  	# Set subtitle stream language
-				"language=eng",
-				"-metadata",  			# Set title
-				"title=" + episodeFullTitle,
-				tempFilePath if enableNormalization else convertedVideoFilePath  # Output video
-			])
+			# command.extend([
+			# 	"-c:s",  				# Copy subtitles
+			# 	"copy",
+			# 	"-map",  				# Use everything from first input file
+			# 	"0",
+			# 	"-map",  				# Use filtered audio
+			# 	"[out]",
+			# 	"-max_interleave_delta",  # Needed for use with subtitles, otherwise audio has buffering issues
+			# 	"0"
+			# ])
+			#
+			# # Mark all original audio streams as english
+			# for i in range(amountAudioStreams[0]):
+			# 	command.append("-metadata:s:a:" + str(i))
+			# 	command.append("language=eng")
+			#
+			# # Mark all additional audio streams as german
+			# for i in range(amountAudioStreams[1]):
+			# 	command.append("-metadata:s:a:" + str(i + amountAudioStreams[0]))
+			# 	command.append("language=deu")
+			#
+			# command.extend([
+			# 	"-metadata:s:s:0",  	# Set subtitle stream language
+			# 	"language=eng",
+			# 	"-metadata",  			# Set title
+			# 	"title=" + episodeFullTitle,
+			# 	tempFilePath if enableNormalization else convertedVideoFilePath  # Output video
+			# ])
 
 			# Add additional audio track with offset and speed adjustment
 			process = subprocess.Popen(
