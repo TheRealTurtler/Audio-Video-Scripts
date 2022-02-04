@@ -13,15 +13,14 @@ import json
 
 
 # Empty list selects all seasons (specify as string)
-seasons = ["01"]
+seasons = []
 # Empty list selects all episodes (specify as string)
-episodes = ["01"]
+episodes = []
 
 # Input path containing different season folders and info.xml
 inputPath = "E:/Filme/JDownloader/Stargate Atlantis/"
 # Output path
-#outputPath = "E:/Plex/Serien [DE-EN]/Stargate Atlantis (2004)/"
-outputPath = "E:/Filme/JDownloader/Audio-Video-Scripts/Test/"
+outputPath = "E:/Plex/Serien [DE-EN]/Stargate Atlantis (2004)/"
 
 # Select title language (DE or EN)
 titleLanguage = "DE"
@@ -57,7 +56,6 @@ REGEX_TOTAL_DURATION	= r"DURATION\s*:\s*(\d+):(\d+):(\d+.\d+)"
 REGEX_CURRENT_FRAME		= r"frame\s*=\s*(\d+)"
 REGEX_CURRENT_TIME		= r"time=(\d+):(\d+):(\d+).(\d+)"
 REGEX_LOUDNORM			= r"\[Parsed_loudnorm_(\d+)"
-
 REGEX_MKVPROPEDIT = r"Progress:\s*(\d+)%"
 
 # Log file location
@@ -85,11 +83,11 @@ validBitrates = [x * 32000 for x in range(1, 11)]
 
 
 class AudioCodecProfiles:
-	aac_lc = "aac_low"
-	aac_he = "aac_he"
-	aac_he_v2 = "aac_he_v2"
-	aac_ld = "aac_ld"
-	aac_eld = "aac_eld"
+	aac_lc		= "aac_low"
+	aac_he		= "aac_he"
+	aac_he_v2	= "aac_he_v2"
+	aac_ld		= "aac_ld"
+	aac_eld		= "aac_eld"
 
 
 class SettingsEpisode:
@@ -423,6 +421,9 @@ def processEpisode(ep):
 						(amountAudioStreams[0] + amountAudioStreams[1]) * progressAudioEncode
 					)
 
+					# Wait for process to finish
+					process.wait()
+
 			command = [
 				ffmpeg,
 				"-hide_banner",			# Hide start info
@@ -586,24 +587,26 @@ def processEpisode(ep):
 					+ "\"! Exiting..."
 				)
 
+			# Check if linear normalization was successful
 			if enableNormalization:
-				pass
-				# TODO: Check if normalization was successful (all audio streams were normalized linearly, not dynamically)
-				# for idxStream, outJson in enumerate(processOutJson):
-				# 	if outJson["normalization_type"] != "linear":
-				# 		if idxStream < amountAudioStreams[0]:
-				# 			errorCritical(
-				# 				"Unable to normalize audio stream "
-				# 				+ str(idxStream)
-				# 				+ " in file \"" + videoFilePath + "\"!"
-				# 			)
-				# 		else:
-				# 			errorCritical(
-				# 				"Unable to normalize audio stream "
-				# 				+ str(idxStream - amountAudioStreams[0])
-				# 				+ " in file \""
-				# 				+ audioFilePath + "\"!"
-				# 			)
+				for idxStream, outJson in enumerate(processOutJson):
+					if outJson["normalization_type"] != "linear":
+						if idxStream < amountAudioStreams[0]:
+							logWrite(
+								"Warning: "
+								+ "Audio stream "
+								+ str(idxStream)
+								+ " in file \"" + videoFilePath + "\""
+								+ " was normalized dynamically."
+							)
+						else:
+							logWrite(
+								"Warning: "
+								+ "Audio stream "
+								+ str(idxStream - amountAudioStreams[0])
+								+ " in file \"" + audioFilePath + "\""
+								+ " was normalized dynamically."
+							)
 		else:
 			errorCritical('"' + audioFilePath + "\" does not exist!")
 	else:
@@ -660,7 +663,7 @@ def processEpisode(ep):
 # =========================== Start of Script ===========================================
 
 # Clear log file
-if enableUniqueLogFile:
+if not enableUniqueLogFile:
 	open(logFile, 'w').close()
 
 # Create thread lock
