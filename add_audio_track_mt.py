@@ -13,9 +13,9 @@ import json
 
 
 # Empty list selects all seasons (specify as string)
-seasons = []
+seasons = ["05"]
 # Empty list selects all episodes (specify as string)
-episodes = []
+episodes = ["17"]
 
 # Input path containing different season folders and info.xml
 inputPath = "E:/Filme/JDownloader/Stargate Atlantis/"
@@ -33,6 +33,7 @@ loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&i
 
 # Enable logging to file
 enableLogFile = True
+enableFfmpegLogFile = True
 enableUniqueLogFile = False
 
 # Maximum number of simultaneous threads
@@ -56,11 +57,11 @@ REGEX_TOTAL_DURATION	= r"DURATION\s*:\s*(\d+):(\d+):(\d+.\d+)"
 REGEX_CURRENT_FRAME		= r"frame\s*=\s*(\d+)"
 REGEX_CURRENT_TIME		= r"time=(\d+):(\d+):(\d+).(\d+)"
 REGEX_LOUDNORM			= r"\[Parsed_loudnorm_(\d+)"
-REGEX_MKVPROPEDIT = r"Progress:\s*(\d+)%"
+REGEX_MKVPROPEDIT		= r"Progress:\s*(\d+)%"
 
 # Log file location
 logFile = "logs/log_"
-logFileFfmpeg = "logs/log_"
+logFileFfmpeg = logFile + "ffmpeg_"
 logFileSuffix = os.path.splitext(os.path.basename(__file__))[0]
 logFileUniqueSuffix = datetime.today().now().strftime("%Y%m%d_%H%M%S")
 logFileExtension = ".txt"
@@ -118,6 +119,7 @@ class SettingsEpisode:
 		self.audioOffset = _audioOffset
 
 
+# TODO: use logging module
 def logWrite(logStr, logFile = logFile):
 	if enableLogFile:
 		with threadLock:
@@ -151,6 +153,23 @@ def getAudioCodecProfile(codecProfile):
 		errorCritical("Unknown audio codec profile: " + codecProfile)
 
 
+def secondsToTimeString(seconds):
+	hours = int(seconds // 3600)
+	minutes = int((seconds % 3600) // 60)
+
+	return f"{hours:02}:{minutes:02}:{seconds:06.3f}"
+
+
+def timeStringToSeconds(timeStr):
+	timeList = timeStr.split(":")
+	seconds = int(timeList[0]) * 3600 + int(timeList[1]) * 60 + float(timeList[2])
+
+	if timeStr.startswith("-"):
+		seconds *= -1
+
+	return seconds
+
+
 def decodeFfmpegOutput(process, progressBar, maxProgress):
 	captureTotalFrames = False
 	jsonStart = False
@@ -172,15 +191,21 @@ def decodeFfmpegOutput(process, progressBar, maxProgress):
 
 	# Decode output from ffmpeg
 	for line in process.stdout:
+		# Stop decoding if process finished
+		if process.poll() is not None:
+			break
+
 		# Ignore empty lines
 		if line.strip() == "":
 			continue
+
 		# Print output to file
-		if enableLogFile:
+		if enableFfmpegLogFile:
 			logFileBuffer += line.strip() + "\n"
 			if len(logFileBuffer) > 1024:
 				logWrite(logFileBuffer[:-1], logFileFfmpeg + "_" + str(threading.get_ident()) + logFileExtension)
 				logFileBuffer = ""
+
 		# Update progress bar
 		regexMatchFrame = regexPatternCurrentFrame.match(line.strip())
 		regexMatchTime = regexPatternCurrentTime.search(line.strip())
@@ -232,10 +257,12 @@ def decodeFfmpegOutput(process, progressBar, maxProgress):
 				continue
 			elif jsonStart:
 				jsonStrings[-1] += line
+				if "}" in line:
+					jsonStart = False
 				continue
 
 	# Flush remaining buffer to log file
-	if enableLogFile:
+	if enableFfmpegLogFile:
 		if len(logFileBuffer) > 0:
 			logWrite(logFileBuffer[:-1], logFileFfmpeg + "_" + str(threading.get_ident()) + logFileExtension)
 			logFileBuffer = ""
@@ -252,8 +279,9 @@ def processEpisode(ep):
 	global threadProgress
 
 	# Clear ffmpeg log file
-	if not enableUniqueLogFile:
-		open(logFileFfmpeg + "_" + str(threading.get_ident()) + logFileExtension, 'w').close()
+	# TODO: Unique log files per episode, not per thread
+	# if not enableUniqueLogFile:
+	# 	open(logFileFfmpeg + "_" + str(threading.get_ident()) + logFileExtension, 'w').close()
 
 	# File paths
 	audioFilePath = inputPath + audioPath + ep.seasonPath + ep.fileAudio
@@ -412,52 +440,60 @@ def processEpisode(ep):
 					audioFilePath,
 				])
 
-				if enableNormalization:
-					command.append("-filter_complex")
-					filterStr = ""
+				command.append("-filter_complex")
+				filterStr = ""
 
-					# Filter all audio streams of the two input files
-					for idxFile in range(2):
-						for idxStream in range(amountAudioStreams[idxFile]):
-							filterStr += "[" + str(idxFile) + ":a:" + str(idxStream) + "]"
-							filterStr += "loudnorm="
-							filterStr += "I="		+ str(loudnessTarget)
-							filterStr += ":LRA="	+ str(loudnessRange)
-							filterStr += ":TP="		+ str(loudnessTruePeak)
-							filterStr += ":print_format=json;"
+				# Filter all audio streams of the two input files
+				for idxFile in range(2):
+					for idxStream in range(amountAudioStreams[idxFile]):
+						filterStr += "[" + str(idxFile) + ":a:" + str(idxStream) + "]"
+						filterStr += "loudnorm="
+						filterStr += "I="		+ str(loudnessTarget)
+						filterStr += ":LRA="	+ str(loudnessRange)
+						filterStr += ":TP="		+ str(loudnessTruePeak)
+						filterStr += ":print_format=json;"
 
-					# Remove last ';'
-					filterStr = filterStr[:-1]
+				# Remove last ';'
+				filterStr = filterStr[:-1]
 
-					# Add filter to command
-					command.append(filterStr)
+				# Add filter to command
+				command.append(filterStr)
 
-					command.extend([
-						# No output codec needed, output is discarded anyway and measured values stay the same
-						"-vn",					# Discard video
-						"-f",					# Only analyze file, don't create any output
-						"null",
-						"-"
-					])
+				command.extend([
+					# No output codec needed, output is discarded anyway and measured values stay the same
+					"-vn",					# Discard video
+					"-f",					# Only analyze file, don't create any output
+					"null",
+					"-"
+				])
 
-					# Analyze loudness of audio tracks
-					process = subprocess.Popen(
-						command,
-						stdout = subprocess.PIPE,
-						stderr = subprocess.STDOUT,
-						universal_newlines = True,
-						encoding = "utf-8"
+				# Analyze loudness of audio tracks
+				process = subprocess.Popen(
+					command,
+					stdout = subprocess.PIPE,
+					stderr = subprocess.STDOUT,
+					universal_newlines = True,
+					encoding = "utf-8"
+				)
+
+				# Decode ffmpeg output
+				processOutJson = decodeFfmpegOutput(
+					process,
+					threadProgress[threading.get_ident()],
+					(amountAudioStreams[0] + amountAudioStreams[1]) * progressAudioEncode
+				)
+
+				# Wait for process to finish
+				process.wait()
+
+				# Check exit code
+				if process.returncode:
+					errorCritical(
+						"Failed to get audio normalization values for \""
+						+ ep.seasonPath
+						+ ep.fileVideo
+						+ "\"!"
 					)
-
-					# Decode ffmpeg output
-					processOutJson = decodeFfmpegOutput(
-						process,
-						threadProgress[threading.get_ident()],
-						(amountAudioStreams[0] + amountAudioStreams[1]) * progressAudioEncode
-					)
-
-					# Wait for process to finish
-					process.wait()
 
 			command = [
 				ffmpeg,
@@ -517,8 +553,9 @@ def processEpisode(ep):
 						if enableNormalization:
 							filterStr += ","
 						filterStr += "atempo="				+ str(audioSpeed)
-						filterStr += ",adelay=delays="		+ ep.audioOffset
-						filterStr += ":all=true"
+						if timeStringToSeconds(ep.audioOffset) > 0:
+							filterStr += ",adelay=delays="	+ ep.audioOffset
+							filterStr += ":all=true"
 					filterStr += "[out"						+ str(idxStreamOut)
 					filterStr += "];"
 
@@ -634,7 +671,7 @@ def processEpisode(ep):
 					+ "\" to video file \""
 					+ ep.seasonPath
 					+ ep.fileVideo
-					+ "\"! Exiting..."
+					+ "\"!"
 				)
 
 			# Check if linear normalization was successful
@@ -704,6 +741,8 @@ def processEpisode(ep):
 		# Add any missing percent value to progress bar
 		threadProgress[threading.get_ident()].update(progressMKVProperties - percentCounter)
 		threadProgress[threading.get_ident()].refresh()
+	else:
+		errorCritical("Output file \"" + convertedVideoFilePath + "\" does not exist!")
 
 	# Remove thread progress from dictionary since thread is finished now
 	threadProgress[threading.get_ident()].close()
@@ -773,6 +812,13 @@ for season in root_node.findall("Season"):
 		if skip:
 			continue
 
+		audioStart = timeStringToSeconds(season.find("AudioStart").text)
+		audioDelay = timeStringToSeconds(episode.find("AudioOffset").text)
+
+		if audioDelay < 0:
+			audioStart += abs(audioDelay)
+			audioDelay = 0
+
 		episodeSettings.append(SettingsEpisode(
 			seasonPath,
 			episode.find("FileNameVideo").text,
@@ -780,8 +826,8 @@ for season in root_node.findall("Season"):
 			episode.find("TitleDE").text,
 			episode.find("TitleEN").text,
 			season.find("PrefixSeason").text + episode.find("PrefixEpisode").text,
-			season.find("AudioStart").text,
-			episode.find("AudioOffset").text
+			secondsToTimeString(audioStart),
+			secondsToTimeString(audioDelay)
 		))
 
 pool = ThreadPool(MAX_THREADS)
