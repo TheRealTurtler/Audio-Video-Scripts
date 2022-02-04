@@ -36,7 +36,7 @@ enableLogFile = True
 enableUniqueLogFile = False
 
 # Maximum number of simultaneous threads
-MAX_THREADS = 6
+MAX_THREADS = 4
 
 # Additional audio track 'FPS'
 # (fps of source video where the audio track is from)
@@ -59,12 +59,18 @@ REGEX_LOUDNORM			= r"\[Parsed_loudnorm_(\d+)"
 REGEX_MKVPROPEDIT = r"Progress:\s*(\d+)%"
 
 # Log file location
-logFile = "logs/log_" + os.path.splitext(os.path.basename(__file__))[0] + ".txt"
+logFile = "logs/log_"
+logFileFfmpeg = "logs/log_"
+logFileSuffix = os.path.splitext(os.path.basename(__file__))[0]
+logFileUniqueSuffix = datetime.today().now().strftime("%Y%m%d_%H%M%S")
+logFileExtension = ".txt"
+
+logFile += logFileSuffix
+logFileFfmpeg += logFileSuffix
 if enableUniqueLogFile:
-	logFile = "logs/log_" \
-			  + os.path.splitext(os.path.basename(__file__))[0] \
-			  + datetime.today().now().strftime("%Y%m%d_%H%M%S") \
-			  + ".txt"
+	logFile += logFileUniqueSuffix
+	logFileFfmpeg += logFileUniqueSuffix
+logFile += logFileExtension
 
 # Progress amount on the progress bar
 progressAudioEncode = 100
@@ -112,7 +118,7 @@ class SettingsEpisode:
 		self.audioOffset = _audioOffset
 
 
-def logWrite(logStr):
+def logWrite(logStr, logFile = logFile):
 	if enableLogFile:
 		with threadLock:
 			# print(logStr)
@@ -161,8 +167,20 @@ def decodeFfmpegOutput(process, progressBar, maxProgress):
 	regexPatternLoudNorm = re.compile(REGEX_LOUDNORM)
 	jsonStrings = []
 
+	# Log file buffer (avoid constant opening and closing of file)
+	logFileBuffer = ""
+
 	# Decode output from ffmpeg
 	for line in process.stdout:
+		# Ignore empty lines
+		if line.strip() == "":
+			continue
+		# Print output to file
+		if enableLogFile:
+			logFileBuffer += line.strip() + "\n"
+			if len(logFileBuffer) > 1024:
+				logWrite(logFileBuffer[:-1], logFileFfmpeg + "_" + str(threading.get_ident()) + logFileExtension)
+				logFileBuffer = ""
 		# Update progress bar
 		regexMatchFrame = regexPatternCurrentFrame.match(line.strip())
 		regexMatchTime = regexPatternCurrentTime.search(line.strip())
@@ -216,6 +234,12 @@ def decodeFfmpegOutput(process, progressBar, maxProgress):
 				jsonStrings[-1] += line
 				continue
 
+	# Flush remaining buffer to log file
+	if enableLogFile:
+		if len(logFileBuffer) > 0:
+			logWrite(logFileBuffer[:-1], logFileFfmpeg + "_" + str(threading.get_ident()) + logFileExtension)
+			logFileBuffer = ""
+
 	# Add any missing percent value to progress bar
 	progressBar.update(maxProgress - percentCounter)
 	progressBar.refresh()
@@ -226,6 +250,10 @@ def decodeFfmpegOutput(process, progressBar, maxProgress):
 
 def processEpisode(ep):
 	global threadProgress
+
+	# Clear ffmpeg log file
+	if not enableUniqueLogFile:
+		open(logFileFfmpeg + "_" + str(threading.get_ident()) + logFileExtension, 'w').close()
 
 	# File paths
 	audioFilePath = inputPath + audioPath + ep.seasonPath + ep.fileAudio
@@ -241,6 +269,7 @@ def processEpisode(ep):
 	audioBitRates = []
 	audioSampleRates = []
 	amountAudioStreams = [0, 0]
+	amountSubtitleStreams = [0, 0]
 
 	# Check if video and audio files exist
 	if os.path.exists(videoFilePath):
@@ -287,6 +316,9 @@ def processEpisode(ep):
 						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
 					else:
 						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file \"" + videoFilePath + "\"")
+				# Get subtitle stream info
+				elif stream["codec_type"] == "subtitle":
+					amountSubtitleStreams[0] += 1
 
 			logWrite("Checking audio codec of \"" + audioFilePath + "\"...")
 
@@ -326,6 +358,9 @@ def processEpisode(ep):
 						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
 					else:
 						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file \"" + audioFilePath + "\"")
+				# Get subtitle stream info
+				elif stream["codec_type"] == "subtitle":
+					amountSubtitleStreams[0] += 1
 
 			logWrite(
 				"Adding audio track \""
@@ -529,9 +564,16 @@ def processEpisode(ep):
 					command.append("-map_metadata:s:a:" + str(idxStreamOut))
 					command.append(str(idxFile) + ":s:a:" + str(idxStream))
 
+			# Map all subtitle streams to output
+			for idxFile in range(2):
+				for idxStream in range(amountSubtitleStreams[idxFile]):
+					idxStreamOut = idxStream + idxFile * amountAudioStreams[idxFile]
+					command.append("-map")
+					command.append(str(idxFile) + ":s:" + str(idxStream))
+					command.append("-map_metadata:s:s:" + str(idxStreamOut))
+					command.append(str(idxFile) + ":s:s:" + str(idxStream))
+
 			command.extend([
-				"-map",						# Map subtitles from first input file to output
-				"0:s",
 				"-map_metadata:g",			# Map global metadata to output
 				"0:g",
 				"-max_interleave_delta",	# Needed for use with subtitles, otherwise audio has buffering issues
@@ -548,9 +590,17 @@ def processEpisode(ep):
 				command.append("-metadata:s:a:" + str(idxStream + amountAudioStreams[0]))
 				command.append("language=deu")
 
+			# Mark all original subtitle streams as english
+			for idxStream in range(amountSubtitleStreams[0]):
+				command.append("-metadata:s:s:" + str(idxStream))
+				command.append("language=eng")
+
+			# Mark all additional subtitle streams as german
+			for idxStream in range(amountSubtitleStreams[1]):
+				command.append("-metadata:s:s:" + str(idxStream + amountSubtitleStreams[0]))
+				command.append("language=deu")
+
 			command.extend([
-				"-metadata:s:s:0",		# Set subtitle stream language
-				"language=eng",
 				"-metadata",			# Set title
 				"title=" + episodeFullTitle,
 				convertedVideoFilePath	# Output video
