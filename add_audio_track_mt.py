@@ -47,7 +47,6 @@ audioFps = 25
 # Application paths
 ffmpeg = "ffmpeg.exe"
 ffprobe = "ffprobe.exe"
-ffmpegNormalize = "ffmpeg-normalize"		# Needs to be installed with pip3 install ffmpeg-normalize
 mkvpropedit = "mkvpropedit.exe"
 
 # RegEx strings
@@ -292,7 +291,7 @@ def processEpisode(ep):
 	episodeFullTitle = outputFilePrefixShow \
 					   + ep.filePrefix \
 					   + ep.titleDE if titleLanguage == "DE" else ep.titleEN
-	convertedVideoFilePath = outputPath + seasonPath + episodeFullTitle + ".mkv"
+	convertedVideoFilePath = outputPath + ep.seasonPath + episodeFullTitle + ".mkv"
 
 	audioSpeed = 1.0
 	audioCodecs = []
