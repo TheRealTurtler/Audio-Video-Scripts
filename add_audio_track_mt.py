@@ -13,7 +13,7 @@ import json
 
 
 # Empty list selects all seasons (specify as string)
-seasons = ["02"]
+seasons = ["03", "04"]
 # Empty list selects all episodes (specify as string)
 episodes = []
 
@@ -53,7 +53,7 @@ mkvpropedit = "mkvpropedit.exe"
 # RegEx strings
 REGEX_MEDIA_STREAM		= r"Stream #(\d+):(\d+):\s*Video:"
 REGEX_TOTAL_FRAMES		= r"NUMBER_OF_FRAMES\s*:\s*(\d+)"
-REGEX_TOTAL_DURATION	= r"DURATION\s*:\s*(\d+):(\d+):(\d+.\d+)"
+REGEX_TOTAL_DURATION	= r"\s*DURATION\s*:\s*(\d+):(\d+):(\d+.\d+)"
 REGEX_CURRENT_FRAME		= r"frame\s*=\s*(\d+)"
 REGEX_CURRENT_TIME		= r"time=(\d+):(\d+):(\d+).(\d+)"
 REGEX_LOUDNORM			= r"\[Parsed_loudnorm_(\d+)"
@@ -178,7 +178,7 @@ def decodeFfmpegOutput(process, progressBar, maxProgress):
 	percentCounter = 0
 	regexPatternMediaStream		= re.compile(REGEX_MEDIA_STREAM)
 	regexPatternTotalFrames		= re.compile(REGEX_TOTAL_FRAMES)
-	regexPatternTotalDuration	= re.compile(REGEX_TOTAL_DURATION)
+	regexPatternTotalDuration	= re.compile(REGEX_TOTAL_DURATION, re.IGNORECASE)
 	regexPatternCurrentFrame	= re.compile(REGEX_CURRENT_FRAME)
 	regexPatternCurrentTime		= re.compile(REGEX_CURRENT_TIME)
 
@@ -837,7 +837,7 @@ pool = ThreadPool(MAX_THREADS)
 jobs = []
 
 while episodeSettings:
-	es = episodeSettings.pop()
+	es = episodeSettings.pop(0)
 	jobs.append(pool.apply_async(processEpisode, args = (es,), callback = updateProgressBarTotal))
 
 pool.close()
