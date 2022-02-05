@@ -13,9 +13,9 @@ import json
 
 
 # Empty list selects all seasons (specify as string)
-seasons = ["05"]
+seasons = ["02"]
 # Empty list selects all episodes (specify as string)
-episodes = ["17"]
+episodes = []
 
 # Input path containing different season folders and info.xml
 inputPath = "E:/Filme/JDownloader/Stargate Atlantis/"
@@ -554,7 +554,7 @@ def processEpisode(ep):
 							filterStr += ","
 						filterStr += "atempo="				+ str(audioSpeed)
 						if timeStringToSeconds(ep.audioOffset) > 0:
-							filterStr += ",adelay=delays="	+ ep.audioOffset
+							filterStr += ",adelay=delays="	+ str(int(timeStringToSeconds(ep.audioOffset) * 1000))
 							filterStr += ":all=true"
 					filterStr += "[out"						+ str(idxStreamOut)
 					filterStr += "];"
@@ -830,17 +830,15 @@ for season in root_node.findall("Season"):
 			secondsToTimeString(audioDelay)
 		))
 
+progressBarTotal = tqdm(desc = "Processing Episodes", total = len(episodeSettings))
+updateProgressBarTotal = lambda a : progressBarTotal.update(1)
+
 pool = ThreadPool(MAX_THREADS)
 jobs = []
 
 while episodeSettings:
 	es = episodeSettings.pop()
-	jobs.append(pool.apply_async(processEpisode, (es,)))
+	jobs.append(pool.apply_async(processEpisode, args = (es,), callback = updateProgressBarTotal))
 
 pool.close()
-
-result_list_progressBar = []
-for job in tqdm(jobs, desc = "Processing Episodes"):
-	result_list_progressBar.append(job.get())
-
 pool.join()
