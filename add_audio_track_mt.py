@@ -51,7 +51,7 @@ ffmpegNormalize = "ffmpeg-normalize"		# Needs to be installed with pip3 install 
 mkvpropedit = "mkvpropedit.exe"
 
 # RegEx strings
-REGEX_MEDIA_STREAM		= r"Stream #(\d+):(\d+):\s*Video:"
+REGEX_MEDIA_STREAM		= r"Stream #(\d+):(\d+).*:\s*([a-zA-z]*)\s*:"
 REGEX_TOTAL_FRAMES		= r"NUMBER_OF_FRAMES\s*:\s*(\d+)"
 REGEX_TOTAL_DURATION	= r"\s*DURATION\s*:\s*(\d+):(\d+):(\d+.\d+)"
 REGEX_CURRENT_FRAME		= r"frame\s*=\s*(\d+)"
@@ -209,12 +209,12 @@ def decodeFfmpegOutput(process, progressBar, maxProgress):
 		# Update progress bar
 		regexMatchFrame = regexPatternCurrentFrame.match(line.strip())
 		regexMatchTime = regexPatternCurrentTime.search(line.strip())
-		if regexMatchFrame:
+		if regexMatchFrame and totalFrames > 0:
 			progress = int(((int(regexMatchFrame.group(1)) * maxProgress) / totalFrames) * (progressAudioEncode / 100))
 			progressBar.update(progress - percentCounter)
 			percentCounter = progress
 			continue
-		elif regexMatchTime:
+		elif regexMatchTime and totalDurationS > 0:
 			timeS  = int(regexMatchTime.group(1)) * 3600		# Hours
 			timeS += int(regexMatchTime.group(2)) * 60			# Minutes
 			timeS += float(regexMatchTime.group(3))				# Seconds
@@ -226,9 +226,12 @@ def decodeFfmpegOutput(process, progressBar, maxProgress):
 		# Check for video stream
 		regexMatch = regexPatternMediaStream.match(line.strip())
 		if regexMatch:
-			if regexMatch.group(1) == "0" and regexMatch.group(2) == "0":
+			if regexMatch.group(3).lower() == "video":
+			#if regexMatch.group(1) == "0" and regexMatch.group(2) == "0":
 				captureTotalFrames = True
-				continue
+			else:
+				captureTotalFrames = False
+			continue
 
 		# Get total frames of video stream
 		if captureTotalFrames:
