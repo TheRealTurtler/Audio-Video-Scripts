@@ -15,7 +15,7 @@ import json
 # Empty list selects all seasons (specify as string)
 seasons = ["01"]
 # Empty list selects all episodes (specify as string)
-episodes = []
+episodes = ["01"]
 
 # Input path containing different season folders and info.xml
 inputPath = "H:/The Expanse/"
@@ -42,7 +42,7 @@ MAX_THREADS = 4
 # Additional audio track 'FPS'
 # (fps of source video where the audio track is from)
 # (25 for PAL, 0 if audio file fps = video file fps)
-audioFps = 0
+audioFps = 24
 
 # Application paths
 ffmpeg = "ffmpeg.exe"
@@ -563,10 +563,11 @@ def processEpisode(ep):
 						if audioResampler == "soxr":
 							filterStr += ":precision="		+ str(audioResamplerPrecision)
 					if idxFile == 1:
-						if enableNormalization:
+						if enableNormalization and (audioSpeed != 1 or timeStringToSeconds(ep.audioOffset) > 0):
 							filterStr += ","
 						if audioSpeed != 1:
 							filterStr += "atempo="			+ str(audioSpeed)
+						if timeStringToSeconds(ep.audioOffset) > 0 and (enableNormalization or audioSpeed != 1):
 							filterStr += ","
 						if timeStringToSeconds(ep.audioOffset) > 0:
 							filterStr += "adelay=delays="	+ str(int(timeStringToSeconds(ep.audioOffset) * 1000))
