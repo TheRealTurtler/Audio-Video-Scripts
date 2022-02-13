@@ -13,20 +13,20 @@ import json
 
 
 # Empty list selects all seasons (specify as string)
-seasons = ["03", "04"]
+seasons = ["01"]
 # Empty list selects all episodes (specify as string)
 episodes = []
 
 # Input path containing different season folders and info.xml
-inputPath = "E:/Filme/JDownloader/Stargate Atlantis/"
+inputPath = "H:/The Expanse/"
 # Output path
-outputPath = "E:/Plex/Serien [DE-EN]/Stargate Atlantis (2004)/"
+outputPath = "E:/Filme/The Expanse/"
 
 # Select title language (DE or EN)
 titleLanguage = "DE"
 
 # Normalize audio
-enableNormalization = True
+enableNormalization = False
 loudnessTarget = -23.0		# EBU recommendation: (-23.0)
 loudnessTruePeak = -1.0		# EBU limit (-1.0)
 loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
@@ -41,8 +41,8 @@ MAX_THREADS = 4
 
 # Additional audio track 'FPS'
 # (fps of source video where the audio track is from)
-# (25 for PAL)
-audioFps = 25
+# (25 for PAL, 0 if audio file fps = video file fps)
+audioFps = 0
 
 # Application paths
 ffmpeg = "ffmpeg.exe"
@@ -57,6 +57,7 @@ REGEX_CURRENT_FRAME		= r"frame\s*=\s*(\d+)"
 REGEX_CURRENT_TIME		= r"time=(\d+):(\d+):(\d+).(\d+)"
 REGEX_LOUDNORM			= r"\[Parsed_loudnorm_(\d+)"
 REGEX_MKVPROPEDIT		= r"Progress:\s*(\d+)%"
+REGEX_FFMPEG_FILTER		= r"\[[0-9]*:a:[0-9]\](.*)\[out[0-9]*\]"
 
 # Log file location
 logFile = "logs/log_"
@@ -167,6 +168,14 @@ def timeStringToSeconds(timeStr):
 		seconds *= -1
 
 	return seconds
+
+
+def listSearch(elementList, value):
+	for element in elementList:
+		if value in element:
+			return element
+
+	return ""
 
 
 def decodeFfmpegOutput(process, progressBar, maxProgress):
@@ -321,7 +330,10 @@ def processEpisode(ep):
 				# Check video fps and calculate audio speed for additional audio track
 				if stream["codec_type"] == "video":
 					avgFps = stream["avg_frame_rate"].split("/")
-					audioSpeed = (int(avgFps[0]) / int(avgFps[1])) / audioFps
+					if audioFps > 0:
+						audioSpeed = (int(avgFps[0]) / int(avgFps[1])) / audioFps
+					else:
+						audioSpeed = 1
 				# Get audio stream info
 				elif stream["codec_type"] == "audio":
 					amountAudioStreams[0] += 1
@@ -524,8 +536,7 @@ def processEpisode(ep):
 				"-ss",					# Skip specified time in next input file
 				ep.audioStart,
 				"-i",					# Input audio
-				audioFilePath,
-				"-filter_complex"		# Apply complex filter
+				audioFilePath
 			])
 
 			# Filter all audio streams of the two input files
@@ -554,9 +565,11 @@ def processEpisode(ep):
 					if idxFile == 1:
 						if enableNormalization:
 							filterStr += ","
-						filterStr += "atempo="				+ str(audioSpeed)
+						if audioSpeed != 1:
+							filterStr += "atempo="			+ str(audioSpeed)
+							filterStr += ","
 						if timeStringToSeconds(ep.audioOffset) > 0:
-							filterStr += ",adelay=delays="	+ str(int(timeStringToSeconds(ep.audioOffset) * 1000))
+							filterStr += "adelay=delays="	+ str(int(timeStringToSeconds(ep.audioOffset) * 1000))
 							filterStr += ":all=true"
 					filterStr += "[out"						+ str(idxStreamOut)
 					filterStr += "];"
@@ -565,7 +578,14 @@ def processEpisode(ep):
 			filterStr = filterStr[:-1]
 
 			# Add filter to command
-			command.append(filterStr)
+			regexPatternFilter = re.compile(REGEX_FFMPEG_FILTER)
+			regexMatchFilter = regexPatternFilter.match(filterStr)
+
+			if regexMatchFilter and regexMatchFilter.group(1) != "":
+				command.extend([
+					"-filter_complex",  # Apply complex filter
+					filterStr
+				])
 
 			# Set audio codec, profile and bitrate
 			for idxFile in range(2):
@@ -594,7 +614,7 @@ def processEpisode(ep):
 			for idxFile in range(2):
 				for idxStream in range(amountAudioStreams[idxFile]):
 					idxStreamOut = idxStream + idxFile * amountAudioStreams[idxFile]
-					if idxFile == 0 and not enableNormalization:
+					if (idxFile == 0 and not enableNormalization) or regexMatchFilter.group(1) == "":
 						command.append("-map")
 						command.append(str(idxFile) + ":a:" + str(idxStream))
 					else:
@@ -816,6 +836,20 @@ for season in root_node.findall("Season"):
 
 		audioStart = timeStringToSeconds(season.find("AudioStart").text)
 		audioDelay = timeStringToSeconds(episode.find("AudioOffset").text)
+		videoFile = ""
+		audioFile = ""
+
+		if episode.find("FileNameVideo"):
+			videoFile = episode.find("FileNameVideo").text
+		else:
+			dirList = os.listdir(inputPath + videoPath + seasonPath)
+			videoFile = listSearch(dirList, episode.find("FileNameVideoContains").text)
+
+		if episode.find("FileNameAudio"):
+			audioFile = episode.find("FileNameAudio").text
+		else:
+			dirList = os.listdir(inputPath + audioPath + seasonPath)
+			audioFile = listSearch(dirList, episode.find("FileNameAudioContains").text)
 
 		if audioDelay < 0:
 			audioStart += abs(audioDelay)
@@ -823,8 +857,8 @@ for season in root_node.findall("Season"):
 
 		episodeSettings.append(SettingsEpisode(
 			seasonPath,
-			episode.find("FileNameVideo").text,
-			episode.find("FileNameAudio").text,
+			videoFile,
+			audioFile,
 			episode.find("TitleDE").text,
 			episode.find("TitleEN").text,
 			season.find("PrefixSeason").text + episode.find("PrefixEpisode").text,
