@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -6,12 +7,14 @@ from datetime import datetime
 # =========================== Settings ==================================================
 
 # Empty list selects all seasons (specify as string)
-seasons = ["1"]
+seasons = []
 # Empty list selects all episodes (specify as string)
-episodes = ["04"]
+episodes = []
 
-# Input path containing different season folders and info.xml
-inputPath = ""
+# Input path containing different season folders
+inputPath = "H:/The Expanse/Englisch/"
+infoPath = "H:/The Expanse/"
+outputPath = "H:/The Expanse (2015)/"
 
 # Select title language (DE or EN)
 titleLanguage = "DE"
@@ -20,8 +23,8 @@ titleLanguage = "DE"
 MAX_THREADS = 10
 
 # Application paths
-ffmpeg = "../ffmpeg.exe"
-mkvpropedit = "../mkvpropedit.exe"
+ffmpeg = "ffmpeg.exe"
+mkvpropedit = "mkvpropedit.exe"
 
 # Log file location
 logFile = "logs/log_" + os.path.splitext(os.path.basename(__file__))[0] + datetime.today().now().strftime("%Y%m%d_%H%M%S") + ".txt"
@@ -53,6 +56,7 @@ def errorCritical(errorStr):
 	logWrite("Error: " + errorStr)
 	exit()
 
+
 def listSearch(elementList, value):
 	for element in elementList:
 		if value in element:
@@ -63,21 +67,31 @@ def listSearch(elementList, value):
 
 def processEpisode(_prefixShow, _prefixSeason, ep):
 	# Check if video file exists
-	folderPath = inputPath + seasonPath
+	inputFolderPath = inputPath + seasonPath
+	outputFolderPath = outputPath + seasonPath
 	episodeFullTitle = _prefixShow \
 					   + _prefixSeason \
 					   + ep.filePrefix \
 					   + (ep.titleDE if titleLanguage == "DE" else ep.titleEN)
-	fileExtension = os.path.splitext(folderPath + ep.fileVideo)[1]
+	fileExtension = os.path.splitext(inputFolderPath + ep.fileVideo)[1]
 
 	# Rename file
-	if os.path.exists(folderPath + ep.fileVideo):
-		os.rename(folderPath + ep.fileVideo, folderPath + episodeFullTitle + fileExtension)
+	if os.path.exists(inputFolderPath + ep.fileVideo):
+		# Rename existing if input == output
+		if inputFolderPath == outputFolderPath:
+			os.rename(inputFolderPath + ep.fileVideo, inputFolderPath + episodeFullTitle + fileExtension)
+		# Copy otherwise
+		else:
+			# Check if output folder exists and create it if it doesn't
+			if not os.path.isdir(outputPath + seasonPath):
+				os.makedirs(outputPath + seasonPath)
+
+			shutil.copyfile(inputFolderPath + ep.fileVideo, outputFolderPath + episodeFullTitle + fileExtension)
 
 		# Set title in video file properties
 		subprocess.run([
 			mkvpropedit,
-			folderPath + episodeFullTitle + fileExtension,
+			outputFolderPath + episodeFullTitle + fileExtension,
 			"-e",
 			"info",
 			"-s",
@@ -85,10 +99,10 @@ def processEpisode(_prefixShow, _prefixSeason, ep):
 			"--add-track-statistics-tags"
 		])
 
-		logWrite("Info: " + "Renamed " + folderPath + ep.fileVideo + " to " + folderPath + episodeFullTitle + fileExtension)
+		logWrite("Info: " + "Renamed " + inputFolderPath + ep.fileVideo + " to " + outputFolderPath + episodeFullTitle + fileExtension)
 
 	else:
-		logWrite("Error: " + folderPath + ep.fileVideo + "does not exist!")
+		logWrite("Error: " + inputFolderPath + ep.fileVideo + "does not exist!")
 
 
 # =========================== Start of Script ===========================================
@@ -100,7 +114,7 @@ open(logFile, 'w').close()
 logWrite("This is " + os.path.basename(__file__))
 
 # Get root element of XML file
-root_node = ET.parse(inputPath + "info.xml").getroot()
+root_node = ET.parse(infoPath + "info.xml").getroot()
 
 # Get show prefix for output file name from XML
 prefixShow = root_node.find("PrefixShow").text
