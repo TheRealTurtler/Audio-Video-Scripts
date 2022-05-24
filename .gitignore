@@ -116,6 +116,9 @@ fabric.properties
 # Log folder
 logs/
 
+# Script output folder
+script_output/
+
 # FFMPEG
 ffmpeg.exe
 ffmpeg*.exe
