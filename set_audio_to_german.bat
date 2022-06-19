@@ -38,5 +38,5 @@ call :delete_temp_folder "%~d1%~p1..\temp\"
 exit /b
 
 :delete_temp_folder
-del /q "%~f1"
+rmdir /q "%~f1"
 exit /b
