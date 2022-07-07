@@ -13,20 +13,20 @@ import json
 
 
 # Empty list selects all seasons (specify as string)
-seasons = ["01"]
+seasons = []
 # Empty list selects all episodes (specify as string)
-episodes = ["01"]
+episodes = []
 
 # Input path containing different season folders and info.xml
-inputPath = "H:/The Expanse/"
+inputPath = "E:/Filme/JDownloader/Obi-Wan Kenobi (2022)/"
 # Output path
-outputPath = "E:/Filme/The Expanse/"
+outputPath = "E:/Filme/JDownloader/Audio-Video-Scripts/Obi-Wan Kenobi (2022)/"
 
 # Select title language (DE or EN)
 titleLanguage = "DE"
 
 # Normalize audio
-enableNormalization = False
+enableNormalization = True
 loudnessTarget = -23.0		# EBU recommendation: (-23.0)
 loudnessTruePeak = -1.0		# EBU limit (-1.0)
 loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
@@ -42,7 +42,7 @@ MAX_THREADS = 4
 # Additional audio track 'FPS'
 # (fps of source video where the audio track is from)
 # (25 for PAL, 0 if audio file fps = video file fps)
-audioFps = 24
+audioFps = 0
 
 # Application paths
 ffmpeg = "ffmpeg.exe"
@@ -124,8 +124,11 @@ def logWrite(logStr, logFile = logFile):
 	if enableLogFile:
 		with threadLock:
 			# print(logStr)
-			with open(logFile, 'a') as fileHandle:
-				fileHandle.write(logStr + '\n')
+			try:
+				with open(logFile, 'a', encoding = "utf-8") as fileHandle:
+					fileHandle.write(logStr + '\n')
+			except Exception as e:
+				print("Error writing log file: " + logFile + "! Exception: ", e)
 
 
 def errorCritical(errorStr):
@@ -235,7 +238,6 @@ def decodeFfmpegOutput(process, progressBar, maxProgress):
 		regexMatch = regexPatternMediaStream.match(line.strip())
 		if regexMatch:
 			if regexMatch.group(3).lower() == "video":
-			#if regexMatch.group(1) == "0" and regexMatch.group(2) == "0":
 				captureTotalFrames = True
 			else:
 				captureTotalFrames = False
@@ -481,6 +483,14 @@ def processEpisode(ep):
 					"-"
 				])
 
+				commandStr = ""
+
+				for elem in command:
+					commandStr += elem
+					commandStr += ' '
+
+				logWrite("Executing command: " + commandStr)
+
 				# Analyze loudness of audio tracks
 				process = subprocess.Popen(
 					command,
@@ -651,20 +661,28 @@ def processEpisode(ep):
 				command.append("language=deu")
 
 			# Mark all original subtitle streams as english
-			for idxStream in range(amountSubtitleStreams[0]):
-				command.append("-metadata:s:s:" + str(idxStream))
-				command.append("language=eng")
+			# for idxStream in range(amountSubtitleStreams[0]):
+			# 	command.append("-metadata:s:s:" + str(idxStream))
+			# 	command.append("language=eng")
 
 			# Mark all additional subtitle streams as german
-			for idxStream in range(amountSubtitleStreams[1]):
-				command.append("-metadata:s:s:" + str(idxStream + amountSubtitleStreams[0]))
-				command.append("language=deu")
+			# for idxStream in range(amountSubtitleStreams[1]):
+			# 	command.append("-metadata:s:s:" + str(idxStream + amountSubtitleStreams[0]))
+			# 	command.append("language=deu")
 
 			command.extend([
 				"-metadata",			# Set title
 				"title=" + episodeFullTitle,
 				convertedVideoFilePath	# Output video
 			])
+
+			commandStr = ""
+
+			for elem in command:
+				commandStr += elem
+				commandStr += ' '
+
+			logWrite("Executing command: " + commandStr)
 
 			# Add additional audio track with offset, speed adjustment and normalize loudness of all audio tracks
 			process = subprocess.Popen(
