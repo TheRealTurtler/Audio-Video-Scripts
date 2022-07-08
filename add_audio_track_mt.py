@@ -18,9 +18,9 @@ seasons = []
 episodes = []
 
 # Input path containing different season folders and info.xml
-inputPath = "E:/Filme/JDownloader/Obi-Wan Kenobi (2022)/"
+inputPath = ""
 # Output path
-outputPath = "E:/Filme/JDownloader/Audio-Video-Scripts/Obi-Wan Kenobi (2022)/"
+outputPath = ""
 
 # Select title language (DE or EN)
 titleLanguage = "DE"
@@ -572,16 +572,16 @@ def processEpisode(ep):
 						filterStr += ":out_sample_rate="	+ str(audioSampleRates[idxStreamOut])
 						if audioResampler == "soxr":
 							filterStr += ":precision="		+ str(audioResamplerPrecision)
+						filterStr += ","
 					if idxFile == 1:
-						if enableNormalization and (audioSpeed != 1 or timeStringToSeconds(ep.audioOffset) > 0):
-							filterStr += ","
 						if audioSpeed != 1:
 							filterStr += "atempo="			+ str(audioSpeed)
-						if timeStringToSeconds(ep.audioOffset) > 0 and (enableNormalization or audioSpeed != 1):
 							filterStr += ","
 						if timeStringToSeconds(ep.audioOffset) > 0:
 							filterStr += "adelay=delays="	+ str(int(timeStringToSeconds(ep.audioOffset) * 1000))
 							filterStr += ":all=true"
+					if filterStr[-1] == ",":
+						filterStr = filterStr[:-1]
 					filterStr += "[out"						+ str(idxStreamOut)
 					filterStr += "];"
 
