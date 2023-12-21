@@ -12,7 +12,7 @@ goto without_subtitles
 for %%a in (%*) do (
 	for /F "delims=" %%i in (%%a) do (
 		set outfile=%%~di%%~pi%%~ni - H264%%~xi
-		ffmpeg -hide_banner -y -i %%a -c:a copy -c:s copy -c:v h264_amf -rc cqp -qp_i 18 -qp_p 18 -qp_b 18 -map 0 "!outfile!"
+		ffmpeg -hide_banner -y -i %%a -c:a copy -c:s copy -c:v h264_amf -rc_mode CQP -qp_i 18 -qp_p 18 -qp_b 18 -map 0 "!outfile!"
 	)
 )
 goto exit
@@ -21,7 +21,7 @@ goto exit
 for %%a in (%*) do (
 	for /F "delims=" %%i in (%%a) do (
 		set outfile=%%~di%%~pi%%~ni - H264%%~xi
-		ffmpeg -hide_banner -y -i %%a -c:a copy -c:v h264_amf -rc cqp -qp_i 18 -qp_p 18 -qp_b 18 -map 0:v -map 0:a "!outfile!"
+		ffmpeg -hide_banner -y -i %%a -c:a copy -c:v h264_amf -rc_mode CQP -qp_i 18 -qp_p 18 -qp_b 18 -map 0:v -map 0:a "!outfile!"
 	)
 )
 goto exit
