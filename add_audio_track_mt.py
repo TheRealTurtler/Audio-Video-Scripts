@@ -583,8 +583,6 @@ def processEpisode(ep):
 							filterStr += ":precision="		+ str(audioResamplerPrecision)
 						filterStr += ","
 					if idxFile == 1:
-						filterStr += "apad"
-						filterStr += ","
 						if audioSpeed != 1:
 							filterStr += "atempo="			+ str(audioSpeed)
 							filterStr += ","
@@ -608,10 +606,6 @@ def processEpisode(ep):
 					"-filter_complex",  # Apply complex filter
 					filterStr
 				])
-
-			# Use shortest stream for output length
-			# -> Audio stream is padded, so video stream should always be the shortest
-			command.extend(["-shortest"])
 
 			# Set audio codec, profile and bitrate
 			for idxFile in range(2):
