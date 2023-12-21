@@ -308,6 +308,7 @@ def processEpisode(ep):
 					   + ep.titleDE if titleLanguage == "DE" else ep.titleEN
 	convertedVideoFilePath = outputPath + ep.seasonPath + episodeFullTitle + ".mkv"
 
+	videoDuration = 0
 	audioSpeed = 1.0
 	audioCodecs = []
 	audioCodecProfiles = []
@@ -340,6 +341,15 @@ def processEpisode(ep):
 						audioSpeed = (int(avgFps[0]) / int(avgFps[1])) / audioFps
 					else:
 						audioSpeed = 1
+
+					# Get video duration
+					if "tags" in stream and "DURATION" in stream["tags"] and timeStringToSeconds(stream["tags"]["DURATION"]) > 0:
+						videoDuration = timeStringToSeconds(stream["tags"]["DURATION"])
+					elif "tags" in stream and "DURATION-eng" in stream["tags"] and timeStringToSeconds(stream["tags"]["DURATION-eng"]) > 0:
+						videoDuration = timeStringToSeconds(stream["tags"]["DURATION-eng"])
+					else:
+						errorCritical("Could not get duration of video stream " + stream["index"] + " in file \"" + videoFilePath + "\"")
+
 				# Get audio stream info
 				elif stream["codec_type"] == "audio":
 					amountAudioStreams[0] += 1
@@ -627,7 +637,7 @@ def processEpisode(ep):
 				"-c:s",					# Copy subtitles
 				"copy",
 				"-map",					# Map video from first input file to output
-				"0:v",
+				"0:v"
 			])
 
 			# Map all filtered audio and corresponding metadata to output
@@ -682,6 +692,8 @@ def processEpisode(ep):
 			command.extend([
 				"-metadata",			# Set title
 				"title=" + episodeFullTitle,
+				"-t",					# Duration of video to correctly truncate audio
+				secondsToTimeString(videoDuration),
 				convertedVideoFilePath	# Output video
 			])
 
