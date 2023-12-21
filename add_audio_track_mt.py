@@ -159,15 +159,19 @@ def getAudioCodecProfile(codecProfile):
 def secondsToTimeString(seconds):
 	hours = int(seconds // 3600)
 	minutes = int((seconds % 3600) // 60)
+	seconds -= hours * 3600 + minutes * 60
 
 	return f"{hours:02}:{minutes:02}:{seconds:06.3f}"
 
 
 def timeStringToSeconds(timeStr):
+	isNegative = timeStr.startswith("-")
+	timeStr.removeprefix("-")
+
 	timeList = timeStr.split(":")
 	seconds = int(timeList[0]) * 3600 + int(timeList[1]) * 60 + float(timeList[2])
 
-	if timeStr.startswith("-"):
+	if isNegative:
 		seconds *= -1
 
 	return seconds
@@ -351,6 +355,8 @@ def processEpisode(ep):
 						audioBitRates.append(getNearestValidBitrate(int(stream["bit_rate"])))
 					elif "tags" in stream and "BPS" in stream["tags"] and int(stream["tags"]["BPS"]) > 0:
 						audioBitRates.append(getNearestValidBitrate(int(stream["tags"]["BPS"])))
+					elif "tags" in stream and "BPS-eng" in stream["tags"] and int(stream["tags"]["BPS-eng"]) > 0:
+						audioBitRates.append(getNearestValidBitrate(int(stream["tags"]["BPS-eng"])))
 					else:
 						errorCritical("Could not get bitrate of audio stream " + stream["index"] + " in file \"" + videoFilePath + "\"")
 
@@ -364,6 +370,7 @@ def processEpisode(ep):
 				elif stream["codec_type"] == "subtitle":
 					amountSubtitleStreams[0] += 1
 
+			logWrite("Using audio speed " + str(audioSpeed) + " for \"" + audioFilePath + "\"")
 			logWrite("Checking audio codec of \"" + audioFilePath + "\"...")
 
 			# Get metadata of audio file
@@ -810,7 +817,10 @@ videoPath = root_node.find("FilePathVideo").text
 audioPath = root_node.find("FilePathAudio").text
 
 # Get show prefix for output file name from XML
-outputFilePrefixShow = root_node.find("PrefixShow").text
+outputFilePrefixShow = ""
+
+if root_node.find("PrefixShow"):
+	outputFilePrefixShow = root_node.find("PrefixShow").text
 
 # List containing settings for each episode in this season
 episodeSettings = []
@@ -826,7 +836,12 @@ for season in root_node.findall("Season"):
 		skip = True
 		# Check if season was specified to be processed
 		for seasonNumber in seasons:
-			if seasonNumber in season.find("PrefixSeason").text:
+			prefix = ""
+
+			if season.find("PrefixSeason"):
+				prefix = season.find("PrefixSeason").text
+
+			if seasonNumber in prefix:
 				skip = False
 
 	if skip:
@@ -847,7 +862,12 @@ for season in root_node.findall("Season"):
 			skip = True
 			# Check if episode was specified to be processed
 			for episodeNumber in episodes:
-				if episodeNumber in episode.find("PrefixEpisode").text:
+				prefix = ""
+
+				if episode.find("PrefixEpisode"):
+					prefix = episode.find("PrefixEpisode").text
+
+				if episodeNumber in prefix:
 					skip = False
 
 		if skip:
@@ -874,13 +894,23 @@ for season in root_node.findall("Season"):
 			audioStart += abs(audioDelay)
 			audioDelay = 0
 
+		prefixSeason = ""
+
+		if season.find("PrefixSeason"):
+			prefixSeason = season.find("PrefixSeason").text
+
+		prefixEpisode = ""
+
+		if episode.find("PrefixEpisode"):
+			prefixEpisode = episode.find("PrefixEpisode").text
+
 		episodeSettings.append(SettingsEpisode(
 			seasonPath,
 			videoFile,
 			audioFile,
 			episode.find("TitleDE").text,
 			episode.find("TitleEN").text,
-			season.find("PrefixSeason").text + episode.find("PrefixEpisode").text,
+			prefixSeason + prefixEpisode,
 			secondsToTimeString(audioStart),
 			secondsToTimeString(audioDelay)
 		))
