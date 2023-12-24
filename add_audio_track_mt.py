@@ -620,7 +620,7 @@ def processEpisode(ep):
 			# Set audio codec, profile and bitrate
 			for idxFile in range(2):
 				for idxStream in range(amountAudioStreams[idxFile]):
-					idxStreamOut = idxStream + idxFile * amountAudioStreams[idxFile]
+					idxStreamOut = idxFile * amountAudioStreams[0] + idxStream
 					command.append("-c:a:" + str(idxStreamOut))
 					if idxFile == 0 and not enableNormalization:
 						command.append("copy")
@@ -643,7 +643,7 @@ def processEpisode(ep):
 			# Map all filtered audio and corresponding metadata to output
 			for idxFile in range(2):
 				for idxStream in range(amountAudioStreams[idxFile]):
-					idxStreamOut = idxStream + idxFile * amountAudioStreams[idxFile]
+					idxStreamOut = idxFile * amountAudioStreams[0] + idxStream
 					if (idxFile == 0 and not enableNormalization) or regexMatchFilter.group(1) == "":
 						command.append("-map")
 						command.append(str(idxFile) + ":a:" + str(idxStream))
@@ -656,7 +656,7 @@ def processEpisode(ep):
 			# Map all subtitle streams to output
 			for idxFile in range(2):
 				for idxStream in range(amountSubtitleStreams[idxFile]):
-					idxStreamOut = idxStream + idxFile * amountAudioStreams[idxFile]
+					idxStreamOut = idxFile * amountAudioStreams[0] + idxStream
 					command.append("-map")
 					command.append(str(idxFile) + ":s:" + str(idxStream))
 					command.append("-map_metadata:s:s:" + str(idxStreamOut))
