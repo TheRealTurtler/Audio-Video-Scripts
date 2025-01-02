@@ -134,4 +134,5 @@ mkvpropedit.exe
 *.mp4
 
 # Virtual Python environment
-venv/
+venv*/
+.venv*/
