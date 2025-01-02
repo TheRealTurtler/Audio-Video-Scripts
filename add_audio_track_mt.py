@@ -18,10 +18,9 @@ seasons = []
 episodes = []
 
 # Input path containing different season folders and info.xml
-inputPath = ""
+inputPath = ''
 # Output path
-outputPath = ""
-
+outputPath = ''
 # Select title language (DE or EN)
 titleLanguage = "DE"
 
@@ -37,7 +36,7 @@ enableFfmpegLogFile = True
 enableUniqueLogFile = False
 
 # Maximum number of simultaneous threads
-MAX_THREADS = 4
+MAX_THREADS = 1
 
 # Additional audio track 'FPS'
 # (fps of source video where the audio track is from)
@@ -78,6 +77,8 @@ progressAudioEncode = 100
 progressMKVProperties = 10
 
 audioCodecAAC = "libfdk_aac"
+audioCodecAC3 = "ac3"
+audioCodecOPUS = "libopus"
 
 # Audio resampler (swr or soxr)
 audioResampler = "soxr"
@@ -314,6 +315,7 @@ def processEpisode(ep):
 	audioCodecProfiles = []
 	audioBitRates = []
 	audioSampleRates = []
+	audioLanguages = []
 	amountAudioStreams = [0, 0]
 	amountSubtitleStreams = [0, 0]
 
@@ -374,8 +376,21 @@ def processEpisode(ep):
 					if stream["codec_name"] == "aac":
 						audioCodecs.append(audioCodecAAC)
 						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
+					elif stream["codec_name"] == "ac3":
+						audioCodecs.append(audioCodecAC3)
+						audioCodecProfiles.append("")
+					elif stream["codec_name"] == "opus":
+						audioCodecs.append(audioCodecOPUS)
+						audioCodecProfiles.append("")
 					else:
 						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file \"" + videoFilePath + "\"")
+
+					# Get audio language
+					if "tags" in stream and "language" in stream["tags"] and stream["tags"]["language"] is not None:
+						audioLanguages.append(stream["tags"]["language"])
+					else:
+						audioLanguages.append("")
+
 				# Get subtitle stream info
 				elif stream["codec_type"] == "subtitle":
 					amountSubtitleStreams[0] += 1
@@ -417,8 +432,21 @@ def processEpisode(ep):
 					if stream["codec_name"] == "aac":
 						audioCodecs.append(audioCodecAAC)
 						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
+					elif stream["codec_name"] == "ac3":
+						audioCodecs.append(audioCodecAC3)
+						audioCodecProfiles.append("")
+					elif stream["codec_name"] == "opus":
+						audioCodecs.append(audioCodecOPUS)
+						audioCodecProfiles.append("")
 					else:
 						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file \"" + audioFilePath + "\"")
+
+					# Get audio language
+					if "tags" in stream and "language" in stream["tags"] and stream["tags"]["language"] is not None:
+						audioLanguages.append(stream["tags"]["language"])
+					else:
+						audioLanguages.append("")
+
 				# Get subtitle stream info
 				elif stream["codec_type"] == "subtitle":
 					amountSubtitleStreams[0] += 1
@@ -622,12 +650,16 @@ def processEpisode(ep):
 				for idxStream in range(amountAudioStreams[idxFile]):
 					idxStreamOut = idxFile * amountAudioStreams[0] + idxStream
 					command.append("-c:a:" + str(idxStreamOut))
+
 					if idxFile == 0 and not enableNormalization:
 						command.append("copy")
 					else:
 						command.append(audioCodecs[idxStreamOut])
-						command.append("-profile:a:" + str(idxStreamOut))
-						command.append(audioCodecProfiles[idxStreamOut])
+
+						if audioCodecProfiles[idxStreamOut] != "":
+							command.append("-profile:a:" + str(idxStreamOut))
+							command.append(audioCodecProfiles[idxStreamOut])
+
 						command.append("-b:a:" + str(idxStreamOut))
 						command.append(str(audioBitRates[idxStreamOut]))
 
@@ -669,15 +701,26 @@ def processEpisode(ep):
 				"0"
 			])
 
-			# Mark all original audio streams as english
-			for idxStream in range(amountAudioStreams[0]):
-				command.append("-metadata:s:a:" + str(idxStream))
-				command.append("language=eng")
+			# Assume the first audio stream is english if not specified
+			if amountAudioStreams[0] > 0:
+				if audioLanguages[0] == "" or audioLanguages[0] == "und":
+					audioLanguages[0] = "eng"
 
-			# Mark all additional audio streams as german
+			# Assume the second audio stream is german if not specified
+			if amountAudioStreams[1] > 0:
+				if audioLanguages[amountAudioStreams[0]] == "" or audioLanguages[amountAudioStreams[0]] == "und":
+					audioLanguages[amountAudioStreams[0]] = "deu"
+
+			# Set audio languages
+			for idxStream in range(amountAudioStreams[0]):
+				if audioLanguages[idxStream] == "eng":
+					command.append("-metadata:s:a:" + str(idxStream))
+					command.append("language=" + audioLanguages[idxStream])
+
 			for idxStream in range(amountAudioStreams[1]):
-				command.append("-metadata:s:a:" + str(idxStream + amountAudioStreams[0]))
-				command.append("language=deu")
+				if audioLanguages[idxStream + amountAudioStreams[0]] != "":
+					command.append("-metadata:s:a:" + str(idxStream + amountAudioStreams[0]))
+					command.append("language=" + audioLanguages[idxStream + amountAudioStreams[0]])
 
 			# Mark all original subtitle streams as english
 			# for idxStream in range(amountSubtitleStreams[0]):
@@ -833,8 +876,11 @@ audioPath = root_node.find("FilePathAudio").text
 # Get show prefix for output file name from XML
 outputFilePrefixShow = ""
 
-if root_node.find("PrefixShow"):
+if root_node.find("PrefixShow") is not None:
 	outputFilePrefixShow = root_node.find("PrefixShow").text
+
+if outputFilePrefixShow is None:
+	outputFilePrefixShow = ""
 
 # List containing settings for each episode in this season
 episodeSettings = []
@@ -852,8 +898,11 @@ for season in root_node.findall("Season"):
 		for seasonNumber in seasons:
 			prefix = ""
 
-			if season.find("PrefixSeason"):
+			if season.find("PrefixSeason") is not None:
 				prefix = season.find("PrefixSeason").text
+
+			if prefix is None:
+				prefix = ""
 
 			if seasonNumber in prefix:
 				skip = False
@@ -910,13 +959,19 @@ for season in root_node.findall("Season"):
 
 		prefixSeason = ""
 
-		if season.find("PrefixSeason"):
+		if season.find("PrefixSeason") is not None:
 			prefixSeason = season.find("PrefixSeason").text
+
+		if prefixSeason is None:
+			prefixSeason = ""
 
 		prefixEpisode = ""
 
-		if episode.find("PrefixEpisode"):
+		if episode.find("PrefixEpisode") is not None:
 			prefixEpisode = episode.find("PrefixEpisode").text
+
+		if prefixEpisode is None:
+			prefixEpisode = ""
 
 		episodeSettings.append(SettingsEpisode(
 			seasonPath,
@@ -932,12 +987,23 @@ for season in root_node.findall("Season"):
 progressBarTotal = tqdm(desc = "Processing Episodes", total = len(episodeSettings))
 updateProgressBarTotal = lambda a : progressBarTotal.update(1)
 
-pool = ThreadPool(MAX_THREADS)
-jobs = []
+pool = None
+jobs = None
+
+if MAX_THREADS > 1:
+	pool = ThreadPool(MAX_THREADS)
+	jobs = []
 
 while episodeSettings:
 	es = episodeSettings.pop(0)
-	jobs.append(pool.apply_async(processEpisode, args = (es,), callback = updateProgressBarTotal))
 
-pool.close()
-pool.join()
+	if pool is not None:
+		jobs.append(pool.apply_async(processEpisode, args = (es,), callback = updateProgressBarTotal))
+	else:
+		processEpisode(es)
+
+if pool is not None:
+	pool.close()
+	pool.join()
+
+logWrite("Finished")
