@@ -28,7 +28,7 @@ exit /b
 
 :step_2
 mkdir "%~d1%~p1..\temp"
-ffmpeg -hide_banner -y -i "%~f1" -c copy -metadata:s:a language=deu "%~d1%~p1..\temp\temp_%~n1%~x1"
+ffmpeg -hide_banner -y -i "%~f1" -c copy -metadata:s:a language=deu -map 0 "%~d1%~p1..\temp\temp_%~n1%~x1"
 if %errorlevel% equ 0 move /y "%~d1%~p1..\temp\temp_%~n1%~x1" "%~f1"
 for /F %%i in ('dir /b "%~d1%~p1..\temp\*.*"') do (
    echo Folder temp is not empty.
