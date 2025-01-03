@@ -18,17 +18,24 @@ seasons = []
 episodes = []
 
 # Input path containing different season folders and info.xml
-inputPath = ''
+inputPath = r''
 # Output path
-outputPath = ''
+outputPath = r'script_output\The Super Mario Bros Movie (2023)'
+
+inputPath += "\\"
+outputPath += "\\"
+
 # Select title language (DE or EN)
 titleLanguage = "DE"
 
 # Normalize audio
-enableNormalization = True
+enableNormalization = False
 loudnessTarget = -23.0		# EBU recommendation: (-23.0)
 loudnessTruePeak = -1.0		# EBU limit (-1.0)
 loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
+
+# Format of file name
+fileNameFormat = "{TITLE} [{RESOLUTION} {VIDEO_CODEC} {HDR} en-{EN_AUDIO_CODEC}-{EN_AUDIO_CHANNELS} de-{DE_AUDIO_CODEC}-{DE_AUDIO_CHANNELS}].mkv"
 
 # Enable logging to file
 enableLogFile = True
@@ -40,7 +47,7 @@ MAX_THREADS = 1
 
 # Additional audio track 'FPS'
 # (fps of source video where the audio track is from)
-# (25 for PAL, 0 if audio file fps = video file fps)
+# (25 for PAL. 24000/1001 for NTSC, 0 if audio file fps = video file fps)
 audioFps = 0
 
 # Application paths
@@ -76,9 +83,9 @@ logFile += logFileExtension
 progressAudioEncode = 100
 progressMKVProperties = 10
 
-audioCodecAAC = "libfdk_aac"
-audioCodecAC3 = "ac3"
-audioCodecOPUS = "libopus"
+audioEncoderAAC = "libfdk_aac"
+audioEncoderAC3 = "ac3"
+audioEncoderOPUS = "libopus"
 
 # Audio resampler (swr or soxr)
 audioResampler = "soxr"
@@ -110,14 +117,43 @@ class SettingsEpisode:
 			_audioStart,
 			_audioOffset
 	):
-		self.seasonPath  = _seasonPath
-		self.fileVideo   = _fileVideo
-		self.fileAudio   = _fileAudio
-		self.titleDE     = _titleDE
-		self.titleEN     = _titleEN
-		self.filePrefix  = _filePrefix
-		self.audioStart  = _audioStart
-		self.audioOffset = _audioOffset
+		self.seasonPath			= _seasonPath
+		self.fileVideo			= _fileVideo
+		self.fileAudio			= _fileAudio
+		self.titleDE			= _titleDE
+		self.titleEN			= _titleEN
+		self.filePrefix			= _filePrefix
+		self.audioStart			= _audioStart
+		self.audioOffset		= _audioOffset
+
+
+class InfoVideo:
+	def __init__(self):
+		self.width				= None
+		self.height				= None
+		self.codec				= None
+		self.profile			= None
+		self.color_space		= None
+		self.color_transfer		= None
+		self.color_primaries	= None
+		self.duration			= None
+		self.framerate			= None
+
+
+class InfoAudio:
+	def __init__(self):
+		self.codec				= None
+		self.profile			= None
+		self.bitrate			= None
+		self.samplerate			= None
+		self.language 			= None
+		self.channels			= None
+		self.channel_layout		= None
+
+
+class InfoSubtitle:
+	def __init__(self):
+		self.language	= None
 
 
 # TODO: use logging module
@@ -148,13 +184,27 @@ def getNearestValidBitrate(bitrate):
 	return validBitrate
 
 
-def getAudioCodecProfile(codecProfile):
-	if codecProfile == "LC":
-		return AudioCodecProfiles.aac_lc
-	elif codecProfile == "HE-AAC":
-		return AudioCodecProfiles.aac_he
+def getAudioEncoder(codec):
+	if codec == "aac":
+		return audioEncoderAAC
+	elif codec == "ac3":
+		return audioEncoderAC3
+	elif codec == "opus":
+		return audioEncoderOPUS
 	else:
-		errorCritical("Unknown audio codec profile: " + codecProfile)
+		errorCritical("Unknown audio codec: " + codec)
+
+
+def getAudioEncoderProfile(codec, profile):
+	if codec == "aac":
+		if profile == "LC":
+			return AudioCodecProfiles.aac_lc
+		elif profile == "HE-AAC":
+			return AudioCodecProfiles.aac_he
+		else:
+			errorCritical("Unknown audio profile: " + profile)
+	else:
+		return None
 
 
 def secondsToTimeString(seconds):
@@ -184,6 +234,55 @@ def listSearch(elementList, value):
 			return element
 
 	return ""
+
+
+def get_resolution(widht, height):
+	if height <= 240:
+		return "240p"
+	elif height <= 360:
+		return "360p"
+	elif height <= 480:
+		return "480p"
+	elif height <= 720:
+		return "720p"
+	elif height <= 1080:
+		return "1080p"
+	elif height <= 1440:	# 2K
+		return "1440p"
+	elif height <= 2160:	# 4K
+		return "2160p"
+	elif height <= 2880:	# 5K
+		return "2880p"
+	elif height <= 3384:	# 6K
+		return "3384p"
+	elif height <= 4320:	# 8K
+		return "4320p"
+
+
+def get_hdr(color_space, color_transfer, color_promaries):
+	if color_space == "bt2020nc" and color_transfer == "smpte2084" and color_promaries == "bt2020":
+		return "HDR"
+	else:
+		return "SDR"
+
+
+def get_audio_channels(channels, layout):
+	if channels == 6 and "5.1" in layout:
+		return "5.1"
+	elif channels == 2:
+		return "2"
+	else:
+		errorCritical("Unknown channel layout! Channels: " + channels + " Layout: " + layout)
+
+
+def get_audio_codec(codec, profile):
+	if codec == "aac":
+		if "HE" in profile:
+			return "AAC-HE"
+		else:
+			return "AAC-LC"
+	else:
+		return codec.upper()
 
 
 def decodeFfmpegOutput(process, progressBar, maxProgress):
@@ -307,15 +406,13 @@ def processEpisode(ep):
 	episodeFullTitle = outputFilePrefixShow \
 					   + ep.filePrefix \
 					   + ep.titleDE if titleLanguage == "DE" else ep.titleEN
-	convertedVideoFilePath = outputPath + ep.seasonPath + episodeFullTitle + ".mkv"
+	convertedVideoFilePath = outputPath + ep.seasonPath
 
-	videoDuration = 0
+	infoVideo = InfoVideo()
+	infoAudio = []
+	infoSubtitle = []
+
 	audioSpeed = 1.0
-	audioCodecs = []
-	audioCodecProfiles = []
-	audioBitRates = []
-	audioSampleRates = []
-	audioLanguages = []
 	amountAudioStreams = [0, 0]
 	amountSubtitleStreams = [0, 0]
 
@@ -339,61 +436,80 @@ def processEpisode(ep):
 				# Check video fps and calculate audio speed for additional audio track
 				if stream["codec_type"] == "video":
 					avgFps = stream["avg_frame_rate"].split("/")
+					infoVideo.framerate = int(avgFps[0]) / int(avgFps[1])
+
 					if audioFps > 0:
-						audioSpeed = (int(avgFps[0]) / int(avgFps[1])) / audioFps
-					else:
-						audioSpeed = 1
+						audioSpeed = infoVideo.framerate / audioFps
 
 					# Get video duration
 					if "tags" in stream and "DURATION" in stream["tags"] and timeStringToSeconds(stream["tags"]["DURATION"]) > 0:
-						videoDuration = timeStringToSeconds(stream["tags"]["DURATION"])
+						infoVideo.duration = timeStringToSeconds(stream["tags"]["DURATION"])
 					elif "tags" in stream and "DURATION-eng" in stream["tags"] and timeStringToSeconds(stream["tags"]["DURATION-eng"]) > 0:
-						videoDuration = timeStringToSeconds(stream["tags"]["DURATION-eng"])
+						infoVideo.duration = timeStringToSeconds(stream["tags"]["DURATION-eng"])
 					else:
 						errorCritical("Could not get duration of video stream " + stream["index"] + " in file \"" + videoFilePath + "\"")
+
+					infoVideo.width = stream["width"]
+					infoVideo.height = stream["height"]
+					infoVideo.codec = stream["codec_name"]
+					infoVideo.profile = stream["profile"]
+					infoVideo.color_space = stream["color_space"]
+					infoVideo.color_transfer = stream["color_transfer"]
+					infoVideo.color_primaries = stream["color_primaries"]
+
 
 				# Get audio stream info
 				elif stream["codec_type"] == "audio":
 					amountAudioStreams[0] += 1
+					infoStream = InfoAudio()
 
 					# Get samplerate
 					if "sample_rate" in stream and int(stream["sample_rate"]) > 0:
-						audioSampleRates.append(int(stream["sample_rate"]))
+						infoStream.samplerate =int(stream["sample_rate"])
 					else:
 						errorCritical("Could not get samplerate of audio stream " + stream["index"] + " in file \"" + videoFilePath + "\"")
 
 					# Get bitrate
 					if "bit_rate" in stream and int(stream["bit_rate"]) > 0:
-						audioBitRates.append(getNearestValidBitrate(int(stream["bit_rate"])))
+						infoStream.bitrate = int(stream["bit_rate"])
 					elif "tags" in stream and "BPS" in stream["tags"] and int(stream["tags"]["BPS"]) > 0:
-						audioBitRates.append(getNearestValidBitrate(int(stream["tags"]["BPS"])))
+						infoStream.bitrate = int(stream["tags"]["BPS"])
 					elif "tags" in stream and "BPS-eng" in stream["tags"] and int(stream["tags"]["BPS-eng"]) > 0:
-						audioBitRates.append(getNearestValidBitrate(int(stream["tags"]["BPS-eng"])))
+						infoStream.bitrate = int(stream["tags"]["BPS-eng"])
 					else:
 						errorCritical("Could not get bitrate of audio stream " + stream["index"] + " in file \"" + videoFilePath + "\"")
 
 					# Get audio codec and profile
-					if stream["codec_name"] == "aac":
-						audioCodecs.append(audioCodecAAC)
-						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
-					elif stream["codec_name"] == "ac3":
-						audioCodecs.append(audioCodecAC3)
-						audioCodecProfiles.append("")
-					elif stream["codec_name"] == "opus":
-						audioCodecs.append(audioCodecOPUS)
-						audioCodecProfiles.append("")
-					else:
-						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file \"" + videoFilePath + "\"")
+					if "codec_name" in stream:
+						infoStream.codec = stream["codec_name"]
+
+					if "profile" in stream:
+						infoStream.profile = stream["profile"]
 
 					# Get audio language
-					if "tags" in stream and "language" in stream["tags"] and stream["tags"]["language"] is not None:
-						audioLanguages.append(stream["tags"]["language"])
-					else:
-						audioLanguages.append("")
+					if "tags" in stream and "language" in stream["tags"]:
+						infoStream.language = stream["tags"]["language"]
+
+					# Get audio channels
+					if "channels" in stream:
+						infoStream.channels = stream["channels"]
+
+					if "channel_layout" in stream:
+						infoStream.channel_layout = stream["channel_layout"]
+
+					infoAudio.append(infoStream)
 
 				# Get subtitle stream info
 				elif stream["codec_type"] == "subtitle":
 					amountSubtitleStreams[0] += 1
+
+					infoStream = InfoSubtitle()
+
+					# Get subtitle language
+					if "tags" in stream and "language" in stream["tags"]:
+						infoStream.language = stream["tags"]["language"]
+
+					infoSubtitle.append(infoStream)
 
 			logWrite("Using audio speed " + str(audioSpeed) + " for \"" + audioFilePath + "\"")
 			logWrite("Checking audio codec of \"" + audioFilePath + "\"...")
@@ -413,43 +529,55 @@ def processEpisode(ep):
 				# Get audio stream info
 				if stream["codec_type"] == "audio":
 					amountAudioStreams[1] += 1
+					infoStream = InfoAudio()
 
 					# Get samplerate
 					if "sample_rate" in stream and int(stream["sample_rate"]) > 0:
-						audioSampleRates.append(int(stream["sample_rate"]))
+						infoStream.samplerate = int(stream["sample_rate"])
 					else:
-						errorCritical("Could not get samplerate of audio stream " + stream["index"] + " in file \"" + audioFilePath + "\"")
+						errorCritical("Could not get samplerate of audio stream " + stream[
+							"index"] + " in file \"" + videoFilePath + "\"")
 
 					# Get bitrate
 					if "bit_rate" in stream and int(stream["bit_rate"]) > 0:
-						audioBitRates.append(getNearestValidBitrate(int(stream["bit_rate"])))
+						infoStream.bitrate = int(stream["bit_rate"])
 					elif "tags" in stream and "BPS" in stream["tags"] and int(stream["tags"]["BPS"]) > 0:
-						audioBitRates.append(getNearestValidBitrate(int(stream["tags"]["BPS"])))
+						infoStream.bitrate = int(stream["tags"]["BPS"])
 					else:
-						errorCritical("Could not get bitrate of audio stream " + stream["index"] + " in file \"" + audioFilePath + "\"")
+						errorCritical("Could not get bitrate of audio stream " + stream[
+							"index"] + " in file \"" + videoFilePath + "\"")
 
-					# Get codec and profile
-					if stream["codec_name"] == "aac":
-						audioCodecs.append(audioCodecAAC)
-						audioCodecProfiles.append(getAudioCodecProfile(stream["profile"]))
-					elif stream["codec_name"] == "ac3":
-						audioCodecs.append(audioCodecAC3)
-						audioCodecProfiles.append("")
-					elif stream["codec_name"] == "opus":
-						audioCodecs.append(audioCodecOPUS)
-						audioCodecProfiles.append("")
-					else:
-						errorCritical("Detected unknown codec " + stream["codec_name"] + " in file \"" + audioFilePath + "\"")
+					# Get audio codec and profile
+					if "codec_name" in stream:
+						infoStream.codec = stream["codec_name"]
+
+					if "profile" in stream:
+						infoStream.profile = stream["profile"]
 
 					# Get audio language
-					if "tags" in stream and "language" in stream["tags"] and stream["tags"]["language"] is not None:
-						audioLanguages.append(stream["tags"]["language"])
-					else:
-						audioLanguages.append("")
+					if "tags" in stream and "language" in stream["tags"]:
+						infoStream.language = stream["tags"]["language"]
+
+					# Get audio channels
+					if "channels" in stream:
+						infoStream.channels = stream["channels"]
+
+					if "channel_layout" in stream:
+						infoStream.channel_layout = stream["channel_layout"]
+
+					infoAudio.append(infoStream)
 
 				# Get subtitle stream info
 				elif stream["codec_type"] == "subtitle":
-					amountSubtitleStreams[0] += 1
+					amountSubtitleStreams[1] += 1
+
+					infoStream = InfoSubtitle()
+
+					# Get subtitle language
+					if "tags" in stream and "language" in stream["tags"]:
+						infoStream.language = stream["tags"]["language"]
+
+					infoSubtitle.append(infoStream)
 
 			logWrite(
 				"Adding audio track \""
@@ -463,8 +591,10 @@ def processEpisode(ep):
 
 			# Add thread progress to dictionary
 			maxProgress = amountAudioStreams[1] * progressAudioEncode + progressMKVProperties
+
 			if enableNormalization:
 				maxProgress = (amountAudioStreams[0] + amountAudioStreams[1]) * 2 * progressAudioEncode + progressMKVProperties
+
 			threadProgress[threading.get_ident()] = tqdm(
 				total = maxProgress,
 				desc = "Processing \"" + ep.seasonPath + ep.fileVideo + "\"",
@@ -616,7 +746,7 @@ def processEpisode(ep):
 						filterStr += ":print_format=json"
 						filterStr += ",aresample="
 						filterStr += "resampler="			+ audioResampler
-						filterStr += ":out_sample_rate="	+ str(audioSampleRates[idxStreamOut])
+						filterStr += ":out_sample_rate="	+ str(infoAudio[idxStreamOut].samplerate)
 						if audioResampler == "soxr":
 							filterStr += ":precision="		+ str(audioResamplerPrecision)
 						filterStr += ","
@@ -651,17 +781,26 @@ def processEpisode(ep):
 					idxStreamOut = idxFile * amountAudioStreams[0] + idxStream
 					command.append("-c:a:" + str(idxStreamOut))
 
+					encoder = None
+					profile = None
+					bitrate = None
+
 					if idxFile == 0 and not enableNormalization:
-						command.append("copy")
+						encoder = "copy"
 					else:
-						command.append(audioCodecs[idxStreamOut])
+						encoder = getAudioEncoder(infoAudio[idxStreamOut].codec)
+						profile = getAudioEncoderProfile(infoAudio[idxStreamOut].codec, infoAudio[idxStreamOut].profile)
+						bitrate = getNearestValidBitrate(infoAudio[idxStreamOut].bitrate)
 
-						if audioCodecProfiles[idxStreamOut] != "":
-							command.append("-profile:a:" + str(idxStreamOut))
-							command.append(audioCodecProfiles[idxStreamOut])
+					command.append(encoder)
 
+					if profile is not None:
+						command.append("-profile:a:" + str(idxStreamOut))
+						command.append(profile)
+
+					if bitrate is not None:
 						command.append("-b:a:" + str(idxStreamOut))
-						command.append(str(audioBitRates[idxStreamOut]))
+						command.append(str(bitrate))
 
 			command.extend([
 				"-c:v",					# Copy video
@@ -703,24 +842,28 @@ def processEpisode(ep):
 
 			# Assume the first audio stream is english if not specified
 			if amountAudioStreams[0] > 0:
-				if audioLanguages[0] == "" or audioLanguages[0] == "und":
-					audioLanguages[0] = "eng"
+				lang = infoAudio[0].language
+				if lang is None or lang == "" or lang == "und":
+					infoAudio[0].language = "eng"
 
 			# Assume the second audio stream is german if not specified
 			if amountAudioStreams[1] > 0:
-				if audioLanguages[amountAudioStreams[0]] == "" or audioLanguages[amountAudioStreams[0]] == "und":
-					audioLanguages[amountAudioStreams[0]] = "deu"
+				lang = infoAudio[amountAudioStreams[0]].language
+				if lang is None or lang == "" or lang == "und":
+					infoAudio[amountAudioStreams[0]].language = "deu"
 
 			# Set audio languages
 			for idxStream in range(amountAudioStreams[0]):
-				if audioLanguages[idxStream] == "eng":
+				lang = infoAudio[idxStream].language
+				if lang is not None and lang != "":
 					command.append("-metadata:s:a:" + str(idxStream))
-					command.append("language=" + audioLanguages[idxStream])
+					command.append("language=" + lang)
 
 			for idxStream in range(amountAudioStreams[1]):
-				if audioLanguages[idxStream + amountAudioStreams[0]] != "":
+				lang = infoAudio[idxStream + amountAudioStreams[0]].language
+				if lang is not None and lang != "":
 					command.append("-metadata:s:a:" + str(idxStream + amountAudioStreams[0]))
-					command.append("language=" + audioLanguages[idxStream + amountAudioStreams[0]])
+					command.append("language=" + lang)
 
 			# Mark all original subtitle streams as english
 			# for idxStream in range(amountSubtitleStreams[0]):
@@ -732,12 +875,24 @@ def processEpisode(ep):
 			# 	command.append("-metadata:s:s:" + str(idxStream + amountSubtitleStreams[0]))
 			# 	command.append("language=deu")
 
+			fileName = fileNameFormat
+			fileName = fileName.replace("{TITLE}",				episodeFullTitle)
+			fileName = fileName.replace("{RESOLUTION}",			get_resolution(infoVideo.width, infoVideo.height))
+			fileName = fileName.replace("{VIDEO_CODEC}",			str(infoVideo.codec).upper())
+			fileName = fileName.replace("{HDR}",					get_hdr(infoVideo.color_space, infoVideo.color_transfer, infoVideo.color_primaries))
+			fileName = fileName.replace("{EN_AUDIO_CODEC}",		get_audio_codec(infoAudio[0].codec, infoAudio[0].profile))
+			fileName = fileName.replace("{EN_AUDIO_CHANNELS}",	get_audio_channels(infoAudio[0].channels, infoAudio[0].channel_layout))
+			fileName = fileName.replace("{DE_AUDIO_CODEC}", 		get_audio_codec(infoAudio[amountAudioStreams[0]].codec, infoAudio[amountAudioStreams[0]].profile))
+			fileName = fileName.replace("{DE_AUDIO_CHANNELS}",	get_audio_channels(infoAudio[amountAudioStreams[0]].channels, infoAudio[amountAudioStreams[0]].channel_layout))
+
+			convertedVideoFilePath += fileName
+
 			command.extend([
-				"-metadata",			# Set title
+				"-metadata",					# Set title
 				"title=" + episodeFullTitle,
-				"-t",					# Duration of video to correctly truncate audio
-				secondsToTimeString(videoDuration),
-				convertedVideoFilePath	# Output video
+				"-t",							# Duration of video to correctly truncate audio
+				secondsToTimeString(infoVideo.duration),
+				convertedVideoFilePath			# Output video
 			])
 
 			commandStr = ""
