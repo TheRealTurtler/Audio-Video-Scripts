@@ -53,7 +53,6 @@ audioFps = 0
 # Application paths
 ffmpeg = "ffmpeg.exe"
 ffprobe = "ffprobe.exe"
-mkvpropedit = "mkvpropedit.exe"
 
 # RegEx strings
 REGEX_MEDIA_STREAM		= r"Stream #(\d+):(\d+).*:\s*([a-zA-z]*)\s*:"
@@ -81,7 +80,6 @@ logFile += logFileExtension
 
 # Progress amount on the progress bar
 progressAudioEncode = 100
-progressMKVProperties = 10
 
 audioEncoderAAC = "libfdk_aac"
 audioEncoderAC3 = "ac3"
@@ -592,10 +590,10 @@ def processEpisode(ep):
 			)
 
 			# Add thread progress to dictionary
-			maxProgress = amountAudioStreams[1] * progressAudioEncode + progressMKVProperties
+			maxProgress = amountAudioStreams[1] * progressAudioEncode
 
 			if enableNormalization:
-				maxProgress = (amountAudioStreams[0] + amountAudioStreams[1]) * 2 * progressAudioEncode + progressMKVProperties
+				maxProgress = (amountAudioStreams[0] + amountAudioStreams[1]) * 2 * progressAudioEncode
 
 			threadProgress[threading.get_ident()] = tqdm(
 				total = maxProgress,
@@ -877,6 +875,12 @@ def processEpisode(ep):
 			# 	command.append("-metadata:s:s:" + str(idxStream + amountSubtitleStreams[0]))
 			# 	command.append("language=deu")
 
+			# Move MOOV-Atom to the beginning of the file for faster playback
+			command.extend([
+				"-movflags",
+				"+faststart"
+			])
+
 			fileName = fileNameFormat
 			fileName = fileName.replace("{TITLE}",				episodeFullTitle)
 			fileName = fileName.replace("{RESOLUTION}",			get_resolution(infoVideo.width, infoVideo.height))
@@ -960,51 +964,6 @@ def processEpisode(ep):
 			errorCritical('"' + audioFilePath + "\" does not exist!")
 	else:
 		errorCritical('"' + videoFilePath + "\" does not exist!")
-
-	# Check if output file exists
-	if os.path.exists(convertedVideoFilePath):
-		logWrite("Updating metadata of file \"" + convertedVideoFilePath + "\"...")
-
-		# Update track statistics
-		process = subprocess.Popen([
-			mkvpropedit,
-			convertedVideoFilePath,
-			"--add-track-statistics-tags"
-		],
-			stdout = subprocess.PIPE,
-			stderr = subprocess.STDOUT,
-			universal_newlines = True,
-			encoding = "utf-8"
-		)
-
-		percentCounter = 0
-		regexPatternMKVPropEdit = re.compile(REGEX_MKVPROPEDIT)
-
-		# Decode output from mkvpropedit
-		for line in process.stdout:
-			# Get percentage
-			regexMatch = regexPatternMKVPropEdit.match(line.strip())
-			if regexMatch:
-				progress = int(int(regexMatch.group(1)) * (progressMKVProperties / 100))
-				threadProgress[threading.get_ident()].update(progress - percentCounter)
-				percentCounter = progress
-
-		# Wait for process to finish
-		process.wait()
-
-		# Check exit code
-		if process.returncode:
-			errorCritical(
-				"Failed to update metadata of file \""
-				+ convertedVideoFilePath
-				+ "\"! Exiting..."
-			)
-
-		# Add any missing percent value to progress bar
-		threadProgress[threading.get_ident()].update(progressMKVProperties - percentCounter)
-		threadProgress[threading.get_ident()].refresh()
-	else:
-		errorCritical("Output file \"" + convertedVideoFilePath + "\" does not exist!")
 
 	# Remove thread progress from dictionary since thread is finished now
 	threadProgress[threading.get_ident()].close()
@@ -1165,3 +1124,4 @@ if pool is not None:
 	pool.join()
 
 logWrite("Finished")
+exit(0)
