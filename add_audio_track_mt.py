@@ -20,7 +20,7 @@ episodes = []
 # Input path containing different season folders and info.xml
 inputPath = r''
 # Output path
-outputPath = r'script_output\The Super Mario Bros Movie (2023)'
+outputPath = r'script_output'
 
 inputPath += "\\"
 outputPath += "\\"
@@ -267,7 +267,9 @@ def get_hdr(color_space, color_transfer, color_promaries):
 
 
 def get_audio_channels(channels, layout):
-	if channels == 6 and "5.1" in layout:
+	if channels == 8 and "7.1" in layout:
+		return "7.1"
+	elif channels == 6 and "5.1" in layout:
 		return "5.1"
 	elif channels == 2:
 		return "2"
@@ -1156,6 +1158,7 @@ while episodeSettings:
 		jobs.append(pool.apply_async(processEpisode, args = (es,), callback = updateProgressBarTotal))
 	else:
 		processEpisode(es)
+		progressBarTotal.update(1)
 
 if pool is not None:
 	pool.close()
