@@ -7,7 +7,13 @@ from datetime import datetime
 from tqdm import tqdm
 import re
 import json
+import pandas as pd
 
+# Adjust output console settings
+# Output in newer versions of PyCharm is buggy af and has to be set here
+# Otherwise the lines get randomly truncated
+pd.set_option('display.width', 400)
+pd.set_option('display.max_columns', 10)
 
 # =========================== Settings ==================================================
 
@@ -29,7 +35,7 @@ outputPath += "\\"
 titleLanguage = "DE"
 
 # Normalize audio
-enableNormalization = False
+enableNormalization = True
 loudnessTarget = -23.0		# EBU recommendation: (-23.0)
 loudnessTruePeak = -1.0		# EBU limit (-1.0)
 loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
@@ -1124,4 +1130,3 @@ if pool is not None:
 	pool.join()
 
 logWrite("Finished")
-exit(0)
