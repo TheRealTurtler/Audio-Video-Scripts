@@ -7,13 +7,7 @@ from datetime import datetime
 from tqdm import tqdm
 import re
 import json
-import pandas as pd
 
-# Adjust output console settings
-# Output in newer versions of PyCharm is buggy af and has to be set here
-# Otherwise the lines get randomly truncated
-pd.set_option('display.width', 400)
-pd.set_option('display.max_columns', 10)
 
 # =========================== Settings ==================================================
 
@@ -35,7 +29,7 @@ outputPath += "\\"
 titleLanguage = "DE"
 
 # Normalize audio
-enableNormalization = True
+enableNormalization = False
 loudnessTarget = -23.0		# EBU recommendation: (-23.0)
 loudnessTruePeak = -1.0		# EBU limit (-1.0)
 loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
@@ -50,11 +44,6 @@ enableUniqueLogFile = False
 
 # Maximum number of simultaneous threads
 MAX_THREADS = 1
-
-# Additional audio track 'FPS'
-# (fps of source video where the audio track is from)
-# (25 for PAL. 24000/1001 for NTSC, 0 if audio file fps = video file fps)
-audioFps = 0
 
 # Application paths
 ffmpeg = "ffmpeg.exe"
@@ -119,7 +108,8 @@ class SettingsEpisode:
 			_titleEN,
 			_filePrefix,
 			_audioStart,
-			_audioOffset
+			_audioOffset,
+			_audio_fps
 	):
 		self.seasonPath			= _seasonPath
 		self.fileVideo			= _fileVideo
@@ -129,6 +119,7 @@ class SettingsEpisode:
 		self.filePrefix			= _filePrefix
 		self.audioStart			= _audioStart
 		self.audioOffset		= _audioOffset
+		self.audio_fps			= _audio_fps
 
 
 class InfoVideo:
@@ -444,8 +435,8 @@ def processEpisode(ep):
 					avgFps = stream["avg_frame_rate"].split("/")
 					infoVideo.framerate = int(avgFps[0]) / int(avgFps[1])
 
-					if audioFps > 0:
-						audioSpeed = infoVideo.framerate / audioFps
+					if ep.audio_fps > 0:
+						audioSpeed = infoVideo.framerate / ep.audio_fps
 
 					# Get video duration
 					if "tags" in stream and "DURATION" in stream["tags"] and timeStringToSeconds(stream["tags"]["DURATION"]) > 0:
@@ -459,10 +450,13 @@ def processEpisode(ep):
 					infoVideo.height = stream["height"]
 					infoVideo.codec = stream["codec_name"]
 					infoVideo.profile = stream["profile"]
-					infoVideo.color_space = stream["color_space"]
-					infoVideo.color_transfer = stream["color_transfer"]
-					infoVideo.color_primaries = stream["color_primaries"]
 
+					if "color_space" in stream:
+						infoVideo.color_space = stream["color_space"]
+					if "color_transfer" in stream:
+						infoVideo.color_transfer = stream["color_transfer"]
+					if "color_primaries" in stream:
+						infoVideo.color_primaries = stream["color_primaries"]
 
 				# Get audio stream info
 				elif stream["codec_type"] == "audio":
@@ -1095,6 +1089,15 @@ for season in root_node.findall("Season"):
 		if prefixEpisode is None:
 			prefixEpisode = ""
 
+		audio_fps = 0
+
+		if episode.find("AudioFPS") is not None:
+			audio_fps = float(episode.find("AudioFPS").text)
+		elif season.find("AudioFPS") is not None:
+			audio_fps = float(season.find("AudioFPS").text)
+		elif root_node.find("AudioFPS") is not None:
+			audio_fps = float(root_node.find("AudioFPS").text)
+
 		episodeSettings.append(SettingsEpisode(
 			seasonPath,
 			videoFile,
@@ -1103,7 +1106,8 @@ for season in root_node.findall("Season"):
 			episode.find("TitleEN").text,
 			prefixSeason + prefixEpisode,
 			secondsToTimeString(audioStart),
-			secondsToTimeString(audioDelay)
+			secondsToTimeString(audioDelay),
+			audio_fps
 		))
 
 progressBarTotal = tqdm(desc = "Processing Episodes", total = len(episodeSettings))
