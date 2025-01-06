@@ -12,14 +12,14 @@
       ],
       "AudioList": [
         {
-          "AudioBitrate": 160,
+          "AudioBitrate": 512,
           "AudioCompressionLevel": 0,
           "AudioEncoder": "copy",
-          "AudioMixdown": "stereo",
+          "AudioMixdown": "7point1",
           "AudioNormalizeMixLevel": false,
           "AudioSamplerate": "auto",
-          "AudioTrackQualityEnable": false,
-          "AudioTrackQuality": -1,
+          "AudioTrackQualityEnable": true,
+          "AudioTrackQuality": 4,
           "AudioTrackGainSlider": 0,
           "AudioTrackDRCSlider": 0
         }
