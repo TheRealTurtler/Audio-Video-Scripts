@@ -3,8 +3,7 @@
     {
       "AlignAVStart": false,
       "AudioCopyMask": [
-        "copy:aac",
-        "copy:ac3"
+        "copy:aac"
       ],
       "AudioEncoderFallback": "av_aac",
       "AudioLanguageList": [
