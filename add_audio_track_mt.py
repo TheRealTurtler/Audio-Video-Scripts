@@ -43,7 +43,7 @@ enableFfmpegLogFile = True
 enableUniqueLogFile = False
 
 # Maximum number of simultaneous threads
-MAX_THREADS = 1
+MAX_THREADS = 2
 
 # Application paths
 ffmpeg = "ffmpeg.exe"
@@ -83,6 +83,11 @@ audioEncoderOPUS = "libopus"
 # Audio resampler (swr or soxr)
 audioResampler = "soxr"
 audioResamplerPrecision = 28		# Only used with soxr HQ = 20, vHQ = 28
+
+# In some cases the normalized audio cannot be resampled with soxr
+# A simple atrim filter before aresample with the same length as the video fixes this issue
+# https://trac.ffmpeg.org/ticket/11323
+trim_before_resample = False
 
 validBitrates = [x * 32000 for x in range(1, 11)]
 
@@ -144,6 +149,7 @@ class InfoAudio:
 		self.language 			= None
 		self.channels			= None
 		self.channel_layout		= None
+		self.duration			= None
 
 
 class InfoSubtitle:
@@ -463,6 +469,12 @@ def processEpisode(ep):
 					amountAudioStreams[0] += 1
 					infoStream = InfoAudio()
 
+					# Get duration
+					if "tags" in stream and "DURATION" in stream["tags"] and timeStringToSeconds(stream["tags"]["DURATION"]) > 0:
+						infoStream.duration = timeStringToSeconds(stream["tags"]["DURATION"])
+					elif "tags" in stream and "DURATION-eng" in stream["tags"] and timeStringToSeconds(stream["tags"]["DURATION-eng"]) > 0:
+						infoStream.duration = timeStringToSeconds(stream["tags"]["DURATION-eng"])
+
 					# Get samplerate
 					if "sample_rate" in stream and int(stream["sample_rate"]) > 0:
 						infoStream.samplerate =int(stream["sample_rate"])
@@ -530,6 +542,10 @@ def processEpisode(ep):
 				if stream["codec_type"] == "audio":
 					amountAudioStreams[1] += 1
 					infoStream = InfoAudio()
+
+					# Get duration
+					if "tags" in stream and "DURATION" in stream["tags"] and timeStringToSeconds(stream["tags"]["DURATION"]) > 0:
+						infoStream.duration = timeStringToSeconds(stream["tags"]["DURATION"])
 
 					# Get samplerate
 					if "sample_rate" in stream and int(stream["sample_rate"]) > 0:
@@ -744,6 +760,12 @@ def processEpisode(ep):
 						filterStr += ":offset="				+ processOutJson[idxStreamOut]["target_offset"]
 						filterStr += ":linear=true"
 						filterStr += ":print_format=json"
+						if trim_before_resample:
+							filterStr += ",atrim=duration="
+							if infoAudio[idxStreamOut].duration is not None and infoAudio[idxStreamOut].duration > 0:
+								filterStr += str(infoAudio[idxStreamOut].duration)
+							else:
+								filterStr += str(infoVideo.duration)
 						filterStr += ",aresample="
 						filterStr += "resampler="			+ audioResampler
 						filterStr += ":out_sample_rate="	+ str(infoAudio[idxStreamOut].samplerate)
