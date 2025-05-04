@@ -17,10 +17,13 @@ seasons = []
 # Empty list selects all episodes (specify as string)
 episodes = []
 
+pathMedia = r''
 # Input path containing different season folders and info.xml
-inputPath = r''
+inputPathRoot = r'E:\\Filme\\'
+inputPath = inputPathRoot + pathMedia
 # Output path
-outputPath = r'script_output'
+outputPathRoot = r'script_output\\'
+outputPath = outputPathRoot + pathMedia
 
 inputPath += "\\"
 outputPath += "\\"
@@ -35,7 +38,7 @@ loudnessTruePeak = -1.0		# EBU limit (-1.0)
 loudnessRange = 18.0		# https://www.audiokinetic.com/library/edge/?source=Help&id=more_on_loudness_range_lra (18.0)
 
 # Format of file name
-fileNameFormat = "{TITLE} [{RESOLUTION} {VIDEO_CODEC} {HDR} en-{EN_AUDIO_CODEC}-{EN_AUDIO_CHANNELS} de-{DE_AUDIO_CODEC}-{DE_AUDIO_CHANNELS}].mkv"
+fileNameFormat = "{TITLE} - [{RESOLUTION} {VIDEO_CODEC} {HDR} en-{EN_AUDIO_CODEC}-{EN_AUDIO_CHANNELS} de-{DE_AUDIO_CODEC}-{DE_AUDIO_CHANNELS}].mkv"
 
 # Enable logging to file
 enableLogFile = True
@@ -611,9 +614,17 @@ def processEpisode(ep):
 			if enableNormalization:
 				maxProgress = (amountAudioStreams[0] + amountAudioStreams[1]) * 2 * progressAudioEncode
 
+			progressbar_name = "Processing \"" + ep.seasonPath + ep.fileVideo
+
+			if (len(progressbar_name) > 50):
+				progressbar_name = progressbar_name[:50]
+				progressbar_name += "..."
+
+			progressbar_name += "\""
+
 			threadProgress[threading.get_ident()] = tqdm(
 				total = maxProgress,
-				desc = "Processing \"" + ep.seasonPath + ep.fileVideo + "\"",
+				desc = progressbar_name,
 				leave = False,
 			)
 
