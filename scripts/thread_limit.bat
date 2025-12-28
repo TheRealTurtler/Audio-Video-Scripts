@@ -51,11 +51,9 @@ if "!THREADS!"=="-1" (
 )
 
 rem --- numeric clamp ---
-set /a GT=(USE > TOTAL)
-if !GT! equ 1 set USE=%TOTAL%
-
-set /a LT=(USE < 1)
-if !LT! equ 1 set USE=1
+set /a DIFF=USE-TOTAL
+if !DIFF! GTR 0 set /a USE=TOTAL
+if !USE! LSS 1 set /a USE=1
 
 set MASK=0
 for /l %%i in (1,1,!USE!) do set /a MASK=MASK*2+1
