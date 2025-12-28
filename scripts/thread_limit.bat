@@ -1,22 +1,23 @@
 @echo off
 rem ============================================================
-rem  THREAD LIMIT MODULE (DISPATCHER)
+rem  DESCRIPTION
+rem ============================================================
+rem  This module calculates a CPU affinity bitmask based on a
+rem  requested thread count and the system's available logical CPUs.
 rem
-rem  Provides routines:
-rem      - CALC_AFFINITY
-rem      - DEC_TO_HEX
-rem
-rem  Responsibilities:
-rem      - Determine number of logical CPUs
-rem      - Clamp THREADS to valid range
-rem      - Build CPU affinity bitmask
-rem      - Convert bitmask to hex
-rem      - Export AFFINITY variable to caller
+rem  - Accepts a desired thread count as a parameter
+rem  - Falls back to the global THREADS variable if no parameter
+rem    is provided
+rem  - Clamps the requested thread count to a valid range
+rem  - Builds a binary bitmask representing the allowed CPU cores
+rem  - Converts the bitmask to a hexadecimal affinity value
+rem  - Exports the final affinity mask via the AFFINITY variable
 rem
 rem  Usage:
 rem      call thread_limit.bat CALC_AFFINITY <THREADS>
-rem      Result: AFFINITY contains hex mask
+rem      echo %AFFINITY%
 rem ============================================================
+
 
 rem --- Dispatcher ---
 if "%~1" neq "" (
@@ -34,46 +35,37 @@ if "%~1" neq "" (
 exit /b
 
 
-rem ============================================================
-rem  CALCULATE CPU AFFINITY MASK
-rem ============================================================
 :CALC_AFFINITY
 setlocal EnableDelayedExpansion
 
 set "THREADS=%~1"
 
-rem Get total logical processors
 for /f "tokens=2 delims==" %%a in ('
     wmic cpu get NumberOfLogicalProcessors /value ^| find "="
 ') do set "TOTAL=%%a"
 
-rem THREADS = -1 → use all
 if "!THREADS!"=="-1" (
-    set /a USE=!TOTAL!
+    set /a USE=TOTAL
 ) else (
-    set /a USE=!THREADS!
+    set /a USE=THREADS
 )
 
-rem Clamp to valid range
-if !USE! GTR !TOTAL! set USE=!TOTAL!
-if !USE! LSS 1 set USE=1
+rem --- numeric clamp ---
+set /a GT=(USE > TOTAL)
+if !GT! equ 1 set USE=%TOTAL%
 
-rem Build bitmask manually
+set /a LT=(USE < 1)
+if !LT! equ 1 set USE=1
+
 set MASK=0
-for /l %%i in (1,1,!USE!) do (
-    set /a MASK=MASK*2+1
-)
+for /l %%i in (1,1,!USE!) do set /a MASK=MASK*2+1
 
-rem Convert decimal mask to hex string
 call "%~f0" DEC_TO_HEX !MASK! HEX
 
 endlocal & set "AFFINITY=%HEX%"
 exit /b 0
 
 
-rem ============================================================
-rem  DECIMAL TO HEX STRING
-rem ============================================================
 :DEC_TO_HEX
 setlocal EnableDelayedExpansion
 
