@@ -39,82 +39,103 @@ rem ============================================================
 call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
 if errorlevel 1 goto END
 
+rem --- Count files ---
+set COUNT_TOTAL=0
+set COUNT_CURRENT=0
+for %%X in (%FILELIST%) do set /a COUNT_TOTAL+=1
+
 
 rem ============================================================
 rem  PROCESS FILES
 rem ============================================================
 for %%F in (%FILELIST%) do (
-    echo ===========================================================
-    echo Processing: %%~F
-    echo ===========================================================
+    call :PROCESS_FILE "%%~F"
+    if errorlevel 1 goto CLEANUP
+)
+goto END
 
-    rem Switch to the file's directory
-    pushd "%%~dpF"
 
-    set "BASENAME=%%~nF"
-    set "EXT=%%~xF"
-    set "TEMPTHUMB=thumb_!BASENAME!.jpg"
-    set "TEMPFILE=temp_!BASENAME!!EXT!"
-    set "BACKUP=!BASENAME!_backup!EXT!"
+rem ============================================================
+rem  PROCESS A SINGLE FILE
+rem ============================================================
+:PROCESS_FILE
+set /a COUNT_CURRENT+=1
+setlocal EnableDelayedExpansion
 
-    rem Extract thumbnail frame
-    ffmpeg -y -i "%%~nxF" -ss 1 -vframes 1 "!TEMPTHUMB!" >nul 2>&1
-    if errorlevel 1 (
-        echo Error extracting thumbnail.
-        set EXITCODE=1
-        popd
-        goto CLEANUP
-    )
+set "F=%~1"
 
-    rem Remux with embedded cover art
-    ffmpeg -y -i "%%~nxF" -i "!TEMPTHUMB!" ^
-        -map 0:v:0 ^
-        -map 0:a? ^
-        -map 1:v ^
-        -c copy -c:v:1 mjpeg ^
-        -disposition:v:1 attached_pic ^
-        -metadata:s:v:1 title="Cover" ^
-        -metadata:s:v:1 comment="Cover (front)" ^
-        "!TEMPFILE!" >nul 2>&1
+echo ===========================================================
+echo Processing (!COUNT_CURRENT! / !COUNT_TOTAL!) : !F!
+echo ===========================================================
 
-    if errorlevel 1 (
-        echo Error embedding thumbnail.
-        set EXITCODE=1
-        popd
-        goto CLEANUP
-    )
-
-    rem Rename original → backup
-    ren "%%~nxF" "!BACKUP!" >nul 2>&1
-    if errorlevel 1 (
-        echo Error renaming original file.
-        set EXITCODE=1
-        popd
-        goto CLEANUP
-    )
-
-    rem Rename temp → original
-    ren "!TEMPFILE!" "%%~nxF" >nul 2>&1
-    if errorlevel 1 (
-        echo Error replacing original file.
-        ren "!BACKUP!" "%%~nxF" >nul 2>&1
-        set EXITCODE=1
-        popd
-        goto CLEANUP
-    )
-
-    rem Delete backup and thumbnail
-    del "!BACKUP!" >nul 2>&1
-    del "!TEMPTHUMB!" >nul 2>&1
-
-    popd
-
-    echo Done.
-    echo.
+rem Switch to the file's directory and extract name/ext
+for %%X in ("!F!") do (
+    pushd "%%~dpX"
+    set "FILENAME=%%~nxX"
+    set "BASENAME=%%~nX"
+    set "EXT=%%~xX"
 )
 
-set EXITCODE=0
-goto END
+set "TEMPTHUMB=thumb_!BASENAME!.jpg"
+set "TEMPFILE=temp_!BASENAME!!EXT!"
+set "BACKUP=!BASENAME!_backup!EXT!"
+
+rem Extract thumbnail frame
+ffmpeg -y -i "!FILENAME!" -ss 1 -vframes 1 "!TEMPTHUMB!" >nul 2>&1
+if errorlevel 1 (
+    echo Error extracting thumbnail.
+    set EXITCODE=1
+    popd
+    endlocal & goto :EOF
+)
+
+rem Remux with embedded cover art
+ffmpeg -y -i "!FILENAME!" -i "!TEMPTHUMB!" ^
+    -map 0:v:0 ^
+    -map 0:a? ^
+    -map 1:v ^
+    -c copy -c:v:1 mjpeg ^
+    -disposition:v:1 attached_pic ^
+    -metadata:s:v:1 title="Cover" ^
+    -metadata:s:v:1 comment="Cover (front)" ^
+    "!TEMPFILE!" >nul 2>&1
+
+if errorlevel 1 (
+    echo Error embedding thumbnail.
+    set EXITCODE=1
+    popd
+    endlocal & goto :EOF
+)
+
+rem Rename original → backup
+ren "!FILENAME!" "!BACKUP!" >nul 2>&1
+if errorlevel 1 (
+    echo Error renaming original file.
+    set EXITCODE=1
+    popd
+    endlocal & goto :EOF
+)
+
+rem Rename temp → original
+ren "!TEMPFILE!" "!FILENAME!" >nul 2>&1
+if errorlevel 1 (
+    echo Error replacing original file.
+    ren "!BACKUP!" "!FILENAME!" >nul 2>&1
+    set EXITCODE=1
+    popd
+    endlocal & goto :EOF
+)
+
+rem Delete backup and thumbnail
+del "!BACKUP!" >nul 2>&1
+del "!TEMPTHUMB!" >nul 2>&1
+
+popd
+
+echo Done.
+echo.
+
+endlocal & goto :EOF
 
 
 rem ============================================================

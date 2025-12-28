@@ -94,7 +94,6 @@ if "!FAILED_LOG_CREATED!"=="1" (
 exit /b 0
 
 
-
 rem ============================================================================
 rem  PROCESS A SINGLE FILE
 rem ============================================================================
@@ -104,12 +103,12 @@ setlocal EnableDelayedExpansion
 
 set "F=%~1"
 
-rem --- Change working directory to the folder of the current file ---
-for %%X in ("!F!") do pushd "%%~dpX"
-
 echo ===========================================================
 echo Processing (!COUNT_CURRENT! / !COUNT_TOTAL!) : !F!
 echo ===========================================================
+
+rem --- Change working directory to the folder of the current file ---
+for %%X in ("!F!") do pushd "%%~dpX"
 
 rem --- CRF SEARCH ---
 set CMD=ab-av1.exe crf-search -i "!F!" %ENCODE_SETTINGS% %ANALYSIS_SETTINGS% --preset %PRESET%
@@ -202,7 +201,6 @@ echo.
 
 popd
 endlocal & goto :EOF
-
 
 
 rem ============================================================================
