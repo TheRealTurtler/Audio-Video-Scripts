@@ -18,7 +18,6 @@ rem ---------------- USER SETTINGS ----------------
 set PRESET=4
 set ENCODE_SETTINGS=
 set ANALYSIS_SETTINGS=--enc vsync=passthrough
-set VALID_EXTENSIONS=*.mp4 *.mkv *.mov *.webm
 
 set OUTPUT_DIR=Converted
 
