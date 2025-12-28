@@ -10,7 +10,7 @@ rem  - Encodes using the detected CRF
 rem  - Output is stored in a "Converted" subfolder
 rem  - Output container matches the input container
 rem  - Thread usage controlled via CPU affinity (THREADS setting)
-rem  - Failed files are logged in "failed.txt" in the source directory
+rem  - Failed files are logged in "av1-failed.txt" in the source directory
 rem ============================================================================
 
 rem ---------------- USER SETTINGS ----------------
@@ -55,62 +55,27 @@ rem ============================================================================
 rem  INPUT VALIDATION / INTERACTIVE MODE
 rem ============================================================================
 
+set "FILELIST="
+
 if "%~1"=="" (
-    set /p USERINPUT=Enter path to the file or folder you want to convert: 
+    set /p USERINPUT=Enter path to the file or folder you want to convert:
     if not defined USERINPUT exit /b 1
-    set "ARGS=!USERINPUT!"
+
+    rem Single interactive input (can be file or folder)
+    call :COLLECT_FROM_SINGLE "%USERINPUT%"
 ) else (
-    set ARGS=%*
+    rem Drag & drop or CLI: iterate all arguments
+    :COLLECT_FROM_ARGS
+    if "%~1"=="" goto AFTER_FILE_COLLECTION
+    call :COLLECT_FROM_SINGLE "%~1"
+    shift
+    goto COLLECT_FROM_ARGS
 )
 
-
-rem ============================================================================
-rem  CHANGE WORKING DIRECTORY TO INPUT LOCATION
-rem ============================================================================
-
-for %%A in (%ARGS%) do (
-    if exist "%%~A\" (
-        rem Input is a folder
-        cd /d "%%~fA"
-    ) else (
-        rem Input is a file
-        cd /d "%%~dpA"
-    )
-    goto :CD_DONE
-)
-:CD_DONE
-
-
-rem ============================================================================
-rem  FILE COLLECTION
-rem ============================================================================
-
-set FILELIST=
-
-for %%A in (%ARGS%) do (
-    if exist "%%~A\" (
-        rem Folder input: collect all matching files
-        for %%E in (%VALID_EXTENSIONS%) do (
-            for %%F in ("%%~A\%%E") do (
-
-                rem --- Skip files inside OUTPUT_DIR subfolder ---
-                for %%P in ("%%~dpF.") do (
-                    if /i "%%~nxP"=="%OUTPUT_DIR%" (
-                        rem skip this file
-                    ) else (
-                        if exist "%%~F" set FILELIST=!FILELIST! "%%~F"
-                    )
-                )
-
-            )
-        )
-    ) else (
-        rem Single file input
-        if exist "%%~A" set FILELIST=!FILELIST! "%%~A"
-    )
-)
+:AFTER_FILE_COLLECTION
 
 if "%FILELIST%"=="" exit /b 1
+
 
 rem --- Count files ---
 set COUNT_TOTAL=0
@@ -131,9 +96,69 @@ for %%F in (%FILELIST%) do call :PROCESS_FILE "%%~F"
 echo.
 echo All files processed.
 if "!FAILED_LOG_CREATED!"=="1" (
-    echo Some files failed. See failed.txt in source directory.
+    echo Some files failed. See av1-failed.txt in each source directory.
 )
 exit /b 0
+
+
+
+rem ============================================================================
+rem  COLLECT FILES FROM A SINGLE INPUT (FILE OR FOLDER)
+rem ============================================================================
+:COLLECT_FROM_SINGLE
+set "TARGET=%~1"
+
+rem Normalize path
+for /f "delims=" %%Z in ("%TARGET%") do set "TARGET=%%~fZ"
+
+rem Preserve global variables before setlocal
+set "VE=%VALID_EXTENSIONS%"
+set "OD=%OUTPUT_DIR%"
+set "FL=%FILELIST%"
+
+setlocal EnableDelayedExpansion
+
+rem --------------------------------------------------------------------------
+rem  Folder input
+rem --------------------------------------------------------------------------
+if exist "!TARGET!\" (
+
+    rem Switch into the folder so wildcard expansion works
+    pushd "!TARGET!" || (
+        endlocal & set "FILELIST=%FL%" & exit /b
+    )
+
+    rem Iterate over all valid extensions
+    for %%E in (!VE!) do (
+
+        rem Wildcards must not be quoted
+        for %%F in (%%E) do (
+
+            rem Skip files inside the output directory
+            for %%P in ("%%~dpF.") do (
+                if /i not "%%~nxP"=="!OD!" (
+                    if exist "%%~fF" (
+                        set "FL=!FL! "%%~fF""
+                    )
+                )
+            )
+        )
+    )
+
+    popd
+
+rem --------------------------------------------------------------------------
+rem  Single file input
+rem --------------------------------------------------------------------------
+) else (
+    if exist "!TARGET!" (
+        set "FL=!FL! "!TARGET!""
+    )
+)
+
+endlocal & set "FILELIST=%FL%"
+exit /b
+
 
 
 rem ============================================================================
@@ -145,6 +170,9 @@ setlocal EnableDelayedExpansion
 
 set "F=%~1"
 
+rem --- Change working directory to the folder of the current file ---
+for %%X in ("!F!") do pushd "%%~dpX"
+
 echo ===========================================================
 echo Processing (!COUNT_CURRENT! / !COUNT_TOTAL!) : !F!
 echo ===========================================================
@@ -153,8 +181,9 @@ rem --- CRF SEARCH ---
 set CMD=ab-av1.exe crf-search -i "!F!" %ENCODE_SETTINGS% %ANALYSIS_SETTINGS% --preset %PRESET%
 echo Executing: !CMD!
 
+set "CMD_OUT="
 for /f "delims=" %%a in ('!CMD!') do (
-	SET CMD_OUT=%%a
+    set "CMD_OUT=%%a"
 )
 
 rem --- PARSE CRF-SEARCH OUTPUT ---
@@ -176,6 +205,7 @@ if errorlevel 1 (
     call :LOG_FAIL "!F!" "CRF parsing failed! Output: !CMD_OUT!"
     echo ERROR: CRF parsing failed
     echo.
+    popd
     endlocal & goto :EOF
 )
 
@@ -185,6 +215,7 @@ if !CRF_INT! LSS 1 (
     call :LOG_FAIL "!F!" "CRF too small: !BEST_CRF!"
     echo ERROR: CRF too small
     echo.
+    popd
     endlocal & goto :EOF
 )
 
@@ -192,6 +223,7 @@ if !CRF_INT! GTR 63 (
     call :LOG_FAIL "!F!" "CRF too big: !BEST_CRF!"
     echo ERROR: CRF too big
     echo.
+    popd
     endlocal & goto :EOF
 )
 
@@ -217,11 +249,14 @@ if errorlevel 1 (
     call :LOG_FAIL "!F!" "Final encode failed"
     echo ERROR: Final encode failed.
     echo.
+    popd
     endlocal & goto :EOF
 )
 
 echo Done: !OUTFILE!
 echo.
+
+popd
 endlocal & goto :EOF
 
 
