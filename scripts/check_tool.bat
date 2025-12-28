@@ -1,16 +1,21 @@
 @echo off
 rem ============================================================
-rem  TOOL CHECK MODULE
+rem  DESCRIPTION
+rem ============================================================
+rem  This module provides routines to verify the availability of
+rem  required external tools used by other scripts.
 rem
-rem  This module provides routines to check for required tools:
-rem      - CHECK_FFMPEG
-rem      - CHECK_FFPROBE
-rem      - CHECK_ABAV1
-rem      - CHECK_MKVPROPEDIT
+rem  - Each routine checks for a specific executable in PATH
+rem  - Returns errorlevel 0 if the tool is available
+rem  - Returns errorlevel 1 if the tool is missing
 rem
 rem  Usage:
 rem      call check_tool.bat CHECK_FFMPEG
 rem      if errorlevel 1 echo ffmpeg missing
+rem
+rem  Requirements:
+rem      All required tools must be accessible via PATH or located
+rem      next to the calling script.
 rem ============================================================
 
 

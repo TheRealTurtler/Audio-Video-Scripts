@@ -1,14 +1,23 @@
 @echo off
 rem ============================================================
-rem  INPUT HANDLER MODULE (DISPATCHER)
-rem
-rem  Provides routines:
-rem      - HANDLE_INPUT_VIDEO
-rem
-rem  Responsibilities:
-rem      - Initialize FILELIST
-rem      - Handle interactive input if no arguments are given
+rem  DESCRIPTION
 rem ============================================================
+rem  This module handles incoming input paths and prepares a list
+rem  of files for further processing.
+rem
+rem  - Initializes FILELIST for the caller
+rem  - Accepts one or more file or folder paths as arguments
+rem  - If no arguments are provided, interactive input is requested
+rem  - Delegates path filtering to the appropriate input filter
+rem  - Ensures FILELIST contains only valid paths
+rem
+rem  Usage:
+rem      call input_handler.bat HANDLE_INPUT_VIDEO <paths...>
+rem
+rem  Dependencies:
+rem      - input_filter_video.bat
+rem ============================================================
+
 
 rem Path to filter module
 set "INPUT_FILTER=%~dp0input_filter_video.bat"

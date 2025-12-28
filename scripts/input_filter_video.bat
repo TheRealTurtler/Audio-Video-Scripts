@@ -1,16 +1,20 @@
 @echo off
 rem ============================================================
-rem  INPUT FILTER: VIDEO FILES
+rem  DESCRIPTION
+rem ============================================================
+rem  This module filters input paths and collects valid video
+rem  files for further processing.
 rem
-rem  Provides routines:
-rem      - FILTER_VIDEO
+rem  - Accepts either a file or a folder path
+rem  - If the path is a folder, all supported video files inside
+rem    the folder are added to FILELIST
+rem  - If the path is a file, it is added directly to FILELIST
 rem
 rem  Usage:
 rem      call input_filter_video.bat FILTER_VIDEO <path>
 rem
-rem  Behavior:
-rem      - If folder: collects all video files
-rem      - If file: adds it to FILELIST
+rem  Requirements:
+rem      The caller must define FILELIST before invoking this module.
 rem ============================================================
 
 

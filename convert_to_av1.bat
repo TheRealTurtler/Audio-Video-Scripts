@@ -2,15 +2,24 @@
 setlocal EnableDelayedExpansion
 
 rem ============================================================================
-rem  ab-av1 CRF Analysis + Encoding Script
+rem  DESCRIPTION
+rem ============================================================================
+rem  This script performs CRF analysis and AV1 encoding using ab-av1.
 rem
 rem  - Accepts files or folders (drag & drop or manual input)
-rem  - Runs CRF analysis using ab-av1
-rem  - Encodes using the detected CRF
-rem  - Output is stored in a "Converted" subfolder
+rem  - Runs CRF analysis using ab-av1 to determine the optimal CRF value
+rem  - Encodes the video using the detected CRF
+rem  - Output is stored in a "Converted" subfolder inside the source directory
 rem  - Output container matches the input container
-rem  - Thread usage controlled via CPU affinity (THREADS setting)
+rem  - Thread usage is controlled via CPU affinity (THREADS setting)
 rem  - Failed files are logged in "av1-failed.txt" in the source directory
+rem
+rem  Dependencies:
+rem      - ffmpeg.exe
+rem      - ab-av1.exe
+rem      - scripts/check_tool.bat
+rem      - scripts/input_handler.bat
+rem      - scripts/thread_limit.bat
 rem ============================================================================
 
 
@@ -38,6 +47,7 @@ rem  FIRST PASS: CALCULATE AFFINITY AND RESTART SCRIPT UNDER THAT AFFINITY
 rem ============================================================================
 if not defined AFFINITY_BOOTSTRAPPED (
     call "%THREAD_LIMIT%" CALC_AFFINITY %THREADS%
+	if errorlevel 1 exit /b 1
 
     set "AFFINITY_BOOTSTRAPPED=1"
     start "" /affinity !AFFINITY! /b cmd /c "%~f0" %*
