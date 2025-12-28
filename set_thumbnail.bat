@@ -2,12 +2,15 @@
 setlocal EnableDelayedExpansion
 
 rem ============================================================
-rem  SET THUMBNAIL TOOL
-rem
+rem  DESCRIPTION
+rem ============================================================
 rem  This script extracts a thumbnail frame from each input video
 rem  and embeds it as an attached cover image inside the same file.
 rem
-rem  - Input can be: files, folders, drag & drop
+rem  - Input can be: single files, multiple files, folders, or
+rem    drag & drop arguments.
+rem  - After successful processing, the original file is safely
+rem    replaced using a backup-then-rename workflow.
 rem
 rem  Dependencies:
 rem      - ffmpeg.exe
@@ -65,7 +68,9 @@ for %%F in (%FILELIST%) do (
 
     rem Remux with embedded cover art
     ffmpeg -y -i "%%~nxF" -i "!TEMPTHUMB!" ^
-        -map 0:v -map 0:a? -map 1:v ^
+        -map 0:v:0 ^
+        -map 0:a? ^
+        -map 1:v ^
         -c copy -c:v:1 mjpeg ^
         -disposition:v:1 attached_pic ^
         -metadata:s:v:1 title="Cover" ^
@@ -79,7 +84,7 @@ for %%F in (%FILELIST%) do (
         goto CLEANUP
     )
 
-	rem Rename original → backup
+    rem Rename original → backup
     ren "%%~nxF" "!BACKUP!" >nul 2>&1
     if errorlevel 1 (
         echo Error renaming original file.
@@ -103,6 +108,7 @@ for %%F in (%FILELIST%) do (
     del "!TEMPTHUMB!" >nul 2>&1
 
     popd
+
     echo Done.
     echo.
 )
@@ -114,13 +120,13 @@ goto END
 rem ============================================================
 rem  CLEANUP
 rem ============================================================
-
 :CLEANUP
 if exist "!TEMPTHUMB!" del "!TEMPTHUMB!" >nul 2>&1
+goto END
+
 
 rem ============================================================
 rem  END
 rem ============================================================
-
 :END
 exit /b %EXITCODE%
