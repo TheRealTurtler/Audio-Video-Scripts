@@ -1,13 +1,27 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableDelayedExpansion
 
 rem ============================================================
 rem  DESCRIPTION
 rem ============================================================
-echo This script creates a thumbnail from a video file and
-echo embeds it as cover art (attached_pic) into an MP4 container
-echo so that Windows Explorer can show a thumbnail.
-echo.
+rem  This script extracts a thumbnail frame from each input video
+rem  and embeds it as an attached cover image inside the same file.
+rem
+rem  - Input can be: single files, multiple files, folders, or
+rem    drag & drop arguments.
+rem  - All processing happens inside the video's own directory.
+rem  - A thumbnail named "thumb_<filename>.jpg" is created.
+rem  - A temporary output file "temp_<filename>.<ext>" is generated.
+rem  - After successful processing, the original file is safely
+rem    replaced using a backup-then-rename workflow.
+rem
+rem  Supported formats for folder scanning:
+rem      *.mp4 *.mkv *.mov *.webm
+rem
+rem  Requirements:
+rem      ffmpeg.exe must be available in PATH or next to this script.
+rem ============================================================
+
 
 rem ============================================================
 rem  CHECK FOR FFMPEG
@@ -16,38 +30,33 @@ rem ============================================================
 where ffmpeg.exe >nul 2>&1
 if errorlevel 1 (
     echo Error: ffmpeg.exe not found.
-    echo Place ffmpeg.exe in the same folder as this script or in PATH.
     set EXITCODE=1
     goto END
 )
 
 rem ============================================================
-rem  INPUT VALIDATION / INTERACTIVE MODE
+rem  INPUT HANDLING
 rem ============================================================
 
+set "FILELIST="
+
 if "%~1"=="" (
-    set /p USERINPUT=Enter path to the video file: 
+    set /p USERINPUT=Enter path to file or folder:
     if not defined USERINPUT (
         echo No input provided.
         set EXITCODE=1
         goto END
     )
-    set "ARGS=!USERINPUT!"
+    call :COLLECT_INPUT "%USERINPUT%"
 ) else (
-    set ARGS=%*
+    :ARG_LOOP
+    if "%~1"=="" goto AFTER_INPUT
+    call :COLLECT_INPUT "%~1%"
+    shift
+    goto ARG_LOOP
 )
 
-rem ============================================================
-rem  FILE COLLECTION
-rem ============================================================
-
-set FILELIST=
-
-for %%A in (%ARGS%) do (
-    if exist "%%~A" (
-        set FILELIST=!FILELIST! "%%~A"
-    )
-)
+:AFTER_INPUT
 
 if "%FILELIST%"=="" (
     echo No valid files found.
@@ -64,45 +73,78 @@ for %%F in (%FILELIST%) do (
     echo Processing: %%~F
     echo ===========================================================
 
-    rem --- CREATE TEMP THUMBNAIL ---
-    set "TEMPTHUMB=%TEMP%\thumb_!RANDOM!.jpg"
+    rem Switch to the file's directory
+    pushd "%%~dpF"
 
-    echo Extracting thumbnail frame...
-    ffmpeg -y -i "%%~F" -ss 1 -vframes 1 "!TEMPTHUMB!" >nul 2>&1
+    set "BASENAME=%%~nF"
+    set "EXT=%%~xF"
+
+    rem Local thumbnail name
+    set "TEMPTHUMB=thumb_!BASENAME!.jpg"
+
+    rem Extract thumbnail frame
+    ffmpeg -y -i "%%~nxF" -ss 1 -vframes 1 "!TEMPTHUMB!" >nul 2>&1
     if errorlevel 1 (
         echo Error extracting thumbnail.
         set EXITCODE=1
+        popd
         goto CLEANUP
     )
 
-    rem --- BUILD OUTPUT PATH (MP4 with cover) ---
-    set "OUTDIR=%%~dpFconverted"
-    set "OUTFILE=!OUTDIR!\%%~nF-thumb.mp4"
+    rem Local temporary output file
+    set "TEMPFILE=temp_!BASENAME!!EXT!"
 
-    if not exist "!OUTDIR!" mkdir "!OUTDIR!"
-
-    rem --- REMUX AND EMBED COVER ---
-    echo Embedding thumbnail as cover art...
-    ffmpeg -y -i "%%~F" -i "!TEMPTHUMB!" ^
+    rem Remux with embedded cover art
+    ffmpeg -y -i "%%~nxF" -i "!TEMPTHUMB!" ^
         -map 0:v -map 0:a? -map 1:v ^
         -c copy -c:v:1 mjpeg ^
         -disposition:v:1 attached_pic ^
         -metadata:s:v:1 title="Cover" ^
         -metadata:s:v:1 comment="Cover (front)" ^
-        "!OUTFILE!" >nul 2>&1
+        "!TEMPFILE!" >nul 2>&1
 
     if errorlevel 1 (
         echo Error embedding thumbnail.
         set EXITCODE=1
+        popd
         goto CLEANUP
     )
 
-    echo Done: !OUTFILE!
+    rem Safe replace original file
+    set "BACKUP=!BASENAME!_backup!EXT!"
+
+    rem Rename original → backup
+    ren "%%~nxF" "!BACKUP!" >nul 2>&1
+    if errorlevel 1 (
+        echo Error renaming original file.
+        set EXITCODE=1
+        popd
+        goto CLEANUP
+    )
+
+    rem Rename temp → original
+    ren "!TEMPFILE!" "%%~nxF" >nul 2>&1
+    if errorlevel 1 (
+        echo Error replacing original file.
+        ren "!BACKUP!" "%%~nxF" >nul 2>&1
+        set EXITCODE=1
+        popd
+        goto CLEANUP
+    )
+
+    rem Delete backup and thumbnail
+    del "!BACKUP!" >nul 2>&1
+    del "!TEMPTHUMB!" >nul 2>&1
+
+    popd
+
+    echo Done.
     echo.
 )
 
 set EXITCODE=0
 goto END
+
 
 rem ============================================================
 rem  CLEANUP
@@ -112,6 +154,33 @@ rem ============================================================
 if exist "!TEMPTHUMB!" del "!TEMPTHUMB!" >nul 2>&1
 goto END
 
+
+rem ============================================================
+rem  INPUT COLLECTION FUNCTION
+rem ============================================================
+
+:COLLECT_INPUT
+set "TARGET=%~1"
+
+rem Normalize path
+for /f "delims=" %%Z in ("%TARGET%") do set "TARGET=%%~fZ"
+
+if exist "%TARGET%\" (
+    rem Folder: collect video files
+    pushd "%TARGET%" >nul
+    for %%E in (*.mp4 *.mkv *.mov *.webm) do (
+        set "FILELIST=!FILELIST! "%%~fE""
+    )
+    popd >nul
+) else (
+    rem Single file
+    if exist "%TARGET%" (
+        set "FILELIST=!FILELIST! "%TARGET%""
+    )
+)
+exit /b
+
+
 rem ============================================================
 rem  END
 rem ============================================================
@@ -120,5 +189,4 @@ rem ============================================================
 if exist "!TEMPTHUMB!" del "!TEMPTHUMB!" >nul 2>&1
 echo.
 echo Script finished with exit code %EXITCODE%.
-pause
 exit /b %EXITCODE%
