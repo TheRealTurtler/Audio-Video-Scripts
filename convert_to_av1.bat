@@ -20,6 +20,7 @@ rem      - ab-av1.exe
 rem      - scripts/check_tool.bat
 rem      - scripts/input_handler.bat
 rem      - scripts/thread_limit.bat
+rem      - set_thumbnail.bat
 rem ============================================================================
 
 
@@ -40,6 +41,7 @@ rem ============================================================================
 set "CHECK_TOOL=%~dp0scripts\check_tool.bat"
 set "INPUT_HANDLER=%~dp0scripts\input_handler.bat"
 set "THREAD_LIMIT=%~dp0scripts\thread_limit.bat"
+set "SET_THUMBNAIL=%~dp0set_thumbnail.bat"
 
 
 rem ============================================================================
@@ -183,6 +185,16 @@ if errorlevel 1 (
     echo.
     popd
     endlocal & goto :EOF
+)
+
+rem --- Set thumbnail on the encoded file ---
+call "%SET_THUMBNAIL%" SET_THUMBNAIL "!OUTFILE!"
+if errorlevel 1 (
+	call :LOG_FAIL "!F!" "Thumbnail embedding failed"
+    echo ERROR: Thumbnail embedding failed.
+	echo.
+	popd
+	endlocal & goto :EOF
 )
 
 echo Done: !OUTFILE!
