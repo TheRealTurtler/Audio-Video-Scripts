@@ -29,6 +29,9 @@ set PRESET=4
 set ENCODE_SETTINGS=
 set ANALYSIS_SETTINGS=--enc vsync=passthrough
 
+rem Video can be trimmed using these settings:
+rem ENCODE_SETTINGS=--enc ss=1:00 --enc to=6:00
+
 set OUTPUT_DIR=Converted
 
 rem Number of threads to use (-1 = all)
