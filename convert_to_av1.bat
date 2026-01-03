@@ -120,6 +120,7 @@ setlocal EnableDelayedExpansion
 set "F=%~1"
 
 rem --- CRF SEARCH ---
+echo Searching for best CRF...
 set CMD=ab-av1.exe crf-search -i ".\!F!" %ENCODE_SETTINGS% %ANALYSIS_SETTINGS% --preset %PRESET%
 echo Executing: !CMD!
 
@@ -173,6 +174,7 @@ for %%X in ("!F!") do (
 set "OUTFILE=!OUTDIR!\!BASENAME!_av1!EXT!"
 
 rem --- Final Encode ---
+echo Encoding with CRF !BEST_CRF! (VMAF: !BEST_VMAF!)...
 set CMD=ab-av1.exe encode -i ".\!F!" --crf !BEST_CRF! %ENCODE_SETTINGS% --preset %PRESET% -o "!OUTFILE!"
 echo Executing: !CMD!
 
@@ -185,6 +187,7 @@ if not !errorlevel! == 0 (
 )
 
 rem --- Set thumbnail ---
+echo Setting thumbnail...
 call "%SET_THUMBNAIL%" "!OUTFILE!"
 if not !errorlevel! == 0 (
     call :LOG_FAIL "!F!" "Thumbnail embedding failed"
@@ -194,6 +197,7 @@ if not !errorlevel! == 0 (
 )
 
 rem --- Apply movflags faststart ---
+echo Setting movflags...
 call "%SET_MOVFLAGS%" "!OUTFILE!"
 if not !errorlevel! == 0 (
     call :LOG_FAIL "!F!" "Setting movflags failed"

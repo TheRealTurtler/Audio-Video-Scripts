@@ -16,6 +16,7 @@ rem      - input_handler.bat
 rem      - check_tool.bat
 rem ============================================================
 
+set EXITCODE=0
 
 rem ============================================================
 rem  MODULES
@@ -28,14 +29,20 @@ rem ============================================================
 rem  CHECK REQUIRED TOOLS
 rem ============================================================
 call "%CHECK_TOOL%" CHECK_FFMPEG
-if not !errorlevel! == 0 goto END
+if not !errorlevel! == 0 (
+    set EXITCODE=1
+    goto END
+)
 
 
 rem ============================================================
 rem  INPUT HANDLING
 rem ============================================================
 call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
-if not !errorlevel! == 0 goto END
+if not !errorlevel! == 0 (
+    set EXITCODE=1
+    goto END
+)
 
 call "%INPUT_HANDLER%" INIT_FILE_ITERATOR
 
@@ -48,15 +55,20 @@ call "%INPUT_HANDLER%" GET_NEXT_FILE CURRENTFILE
 if not defined CURRENTFILE goto END
 
 for %%A in ("%CURRENTFILE%") do (
-    echo ===========================================================
-    echo Processing !FILEINDEX! / !FILECOUNT! : %%~nxA
-    echo ===========================================================
-
     pushd "%%~dpA"
-    call :PROCESS_FILE "%%~nxA"
-    popd
 
-    if not !errorlevel! == 0 goto CLEANUP
+    echo ===========================================================
+    echo Processing file !FILEINDEX! / !FILECOUNT! : %%~nxA
+    echo ===========================================================
+
+    call :PROCESS_FILE "%%~nxA"
+
+    if not "!EXITCODE!"=="0" (
+        call :LOG_ERROR "%%A"
+        call :CLEANUP
+    )
+
+    popd
 )
 
 goto LOOP
@@ -66,7 +78,6 @@ rem ============================================================
 rem  PROCESS A SINGLE FILE
 rem ============================================================
 :PROCESS_FILE
-setlocal EnableDelayedExpansion
 
 set "FILENAME=%~1"
 set "BASENAME=%~n1"
@@ -77,17 +88,22 @@ set "TEMPFILE=temp_!BASENAME!!EXT!"
 set "BACKUP=!BASENAME!_backup!EXT!"
 
 rem Apply faststart
-ffmpeg -y -xerror -i "!FILENAME!" -c copy -map 0 -movflags +faststart "!TEMPFILE!" >nul 2>&1
+set CMD=ffmpeg -y -xerror -i "!FILENAME!" -c copy -map 0 -movflags +faststart "!TEMPFILE!"
+echo Executing: !CMD!
+
+!CMD! >nul 2>&1
 if not !errorlevel! == 0 (
     echo Error applying faststart.
-    endlocal & exit /b 1
+    set EXITCODE=1
+	goto :EOF
 )
 
 rem Backup original
 ren "!FILENAME!" "!BACKUP!" >nul 2>&1
 if not !errorlevel! == 0 (
     echo Error renaming original file.
-    endlocal & exit /b 1
+    set EXITCODE=1
+	goto :EOF
 )
 
 rem Replace original with temp
@@ -95,10 +111,10 @@ ren "!TEMPFILE!" "!FILENAME!" >nul 2>&1
 if not !errorlevel! == 0 (
     echo Error replacing original file.
     ren "!BACKUP!" "!FILENAME!" >nul 2>&1
-    endlocal & exit /b 1
+    set EXITCODE=1
+    goto :EOF
 )
 
-rem Remove backup
 del "!BACKUP!" >nul 2>&1
 
 echo Done.
@@ -111,7 +127,21 @@ rem ============================================================
 rem  CLEANUP
 rem ============================================================
 :CLEANUP
-goto END
+echo Cleaning up...
+
+if exist "%TEMPFILE%" del "%TEMPFILE%" >nul 2>&1
+if exist "%BACKUP%" del "%BACKUP%" >nul 2>&1
+
+goto :EOF
+
+
+rem ============================================================
+rem  LOG_ERROR
+rem ============================================================
+:LOG_ERROR
+echo ERROR processing file: %~1
+rem TODO: implement error logging
+goto :EOF
 
 
 rem ============================================================

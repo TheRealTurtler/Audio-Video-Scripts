@@ -84,7 +84,11 @@ set "TEMPFILE=temp_%BASENAME%%EXT%"
 set "BACKUP=%BASENAME%_backup%EXT%"
 
 rem Extract thumbnail frame
-ffmpeg -y -xerror -i "%FILENAME%" -ss 1 -vframes 1 "%TEMPTHUMB%" >nul 2>&1
+echo Extracting thumbnail frame...
+set CMD=ffmpeg -y -xerror -i "%FILENAME%" -ss 1 -vframes 1 "%TEMPTHUMB%"
+echo Executing: !CMD!
+
+!CMD! >nul 2>&1
 if not !errorlevel! == 0 (
     echo Error extracting thumbnail.
     set EXITCODE=1
@@ -92,7 +96,8 @@ if not !errorlevel! == 0 (
 )
 
 rem Remux with embedded cover art
-ffmpeg -y -xerror -i "%FILENAME%" -i "%TEMPTHUMB%" ^
+echo Embedding thumbnail into video...
+set CMD=ffmpeg -y -xerror -i "%FILENAME%" -i "%TEMPTHUMB%" ^
     -map 0:v:0 ^
     -map 0:a? ^
     -map 1:v ^
@@ -100,8 +105,11 @@ ffmpeg -y -xerror -i "%FILENAME%" -i "%TEMPTHUMB%" ^
     -disposition:v:1 attached_pic ^
     -metadata:s:v:1 title="Cover" ^
     -metadata:s:v:1 comment="Cover (front)" ^
-    "%TEMPFILE%" >nul 2>&1
+    "%TEMPFILE%"
 
+echo Executing: !CMD!
+
+!CMD! >nul 2>&1
 if not !errorlevel! == 0 (
     echo Error embedding thumbnail.
     set EXITCODE=1
