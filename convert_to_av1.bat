@@ -190,7 +190,7 @@ if errorlevel 1 (
 )
 
 rem --- Set thumbnail on the encoded file ---
-call "%SET_THUMBNAIL%" SET_THUMBNAIL "!OUTFILE!"
+call "%SET_THUMBNAIL%" "!OUTFILE!"
 if errorlevel 1 (
 	call :LOG_FAIL "!F!" "Thumbnail embedding failed"
     echo ERROR: Thumbnail embedding failed.
