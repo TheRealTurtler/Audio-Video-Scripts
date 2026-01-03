@@ -18,6 +18,7 @@ rem      - input_handler.bat
 rem      - check_tool.bat
 rem ============================================================
 
+set EXITCODE=0
 
 rem ============================================================
 rem  MODULES
@@ -30,14 +31,15 @@ rem ============================================================
 rem  CHECK REQUIRED TOOLS
 rem ============================================================
 call "%CHECK_TOOL%" CHECK_FFMPEG
-if errorlevel 1 goto END
+if not "%errorlevel%"=="0" goto END
 
 
 rem ============================================================
 rem  INPUT HANDLING
 rem ============================================================
+rem TODO: add parameter for allowed extensions (thumbnails only work with mp4, NOT with mkv and ESPECIALLY NOT with webm)
 call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
-if errorlevel 1 goto END
+if not "%errorlevel%"=="0" goto END
 
 rem --- Count files ---
 set COUNT_TOTAL=0
@@ -49,48 +51,53 @@ rem ============================================================
 rem  PROCESS FILES
 rem ============================================================
 for %%F in (%FILELIST%) do (
-    call :PROCESS_FILE "%%~F"
-    if errorlevel 1 goto CLEANUP
+    rem Switch to the file's directory
+    pushd "%%~dpF"
+
+    rem Process the file (only filename, no path)
+    call :PROCESS_FILE "%%~nxF"
+
+    rem If an error occurred, log it and clean up
+    if not "!EXITCODE!"=="0" (
+        call :LOG_ERROR "%%~fF"
+        call :CLEANUP
+    )
+
+    rem Return to previous directory
+    popd
 )
+
 goto END
 
 
 rem ============================================================
-rem  PROCESS A SINGLE FILE
+rem  PROCESS_FILE
 rem ============================================================
 :PROCESS_FILE
 set /a COUNT_CURRENT+=1
-setlocal EnableDelayedExpansion
 
-set "F=%~1"
+set "FILENAME=%~1"
+set "BASENAME=%~n1"
+set "EXT=%~x1"
+
+set "TEMPTHUMB=thumb_%BASENAME%.jpg"
+set "TEMPFILE=temp_%BASENAME%%EXT%"
+set "BACKUP=%BASENAME%_backup%EXT%"
 
 echo ===========================================================
-echo Processing (!COUNT_CURRENT! / !COUNT_TOTAL!) : !F!
+echo Processing (!COUNT_CURRENT! / !COUNT_TOTAL!) : %FILENAME%
 echo ===========================================================
-
-rem Switch to the file's directory and extract name/ext
-for %%X in ("!F!") do (
-    pushd "%%~dpX"
-    set "FILENAME=%%~nxX"
-    set "BASENAME=%%~nX"
-    set "EXT=%%~xX"
-)
-
-set "TEMPTHUMB=thumb_!BASENAME!.jpg"
-set "TEMPFILE=temp_!BASENAME!!EXT!"
-set "BACKUP=!BASENAME!_backup!EXT!"
 
 rem Extract thumbnail frame
-ffmpeg -y -i "!FILENAME!" -ss 1 -vframes 1 "!TEMPTHUMB!" >nul 2>&1
-if errorlevel 1 (
+ffmpeg -y -xerror -i "%FILENAME%" -ss 1 -vframes 1 "%TEMPTHUMB%" >nul 2>&1
+if not "%errorlevel%"=="0" (
     echo Error extracting thumbnail.
     set EXITCODE=1
-    popd
-    endlocal & goto :EOF
+    goto :EOF
 )
 
 rem Remux with embedded cover art
-ffmpeg -y -i "!FILENAME!" -i "!TEMPTHUMB!" ^
+ffmpeg -y -xerror -i "%FILENAME%" -i "%TEMPTHUMB%" ^
     -map 0:v:0 ^
     -map 0:a? ^
     -map 1:v ^
@@ -98,52 +105,60 @@ ffmpeg -y -i "!FILENAME!" -i "!TEMPTHUMB!" ^
     -disposition:v:1 attached_pic ^
     -metadata:s:v:1 title="Cover" ^
     -metadata:s:v:1 comment="Cover (front)" ^
-    "!TEMPFILE!" >nul 2>&1
+    "%TEMPFILE%" >nul 2>&1
 
-if errorlevel 1 (
+if not "%errorlevel%"=="0" (
     echo Error embedding thumbnail.
     set EXITCODE=1
-    popd
-    endlocal & goto :EOF
+    goto :EOF
 )
 
 rem Rename original → backup
-ren "!FILENAME!" "!BACKUP!" >nul 2>&1
-if errorlevel 1 (
+ren "%FILENAME%" "%BACKUP%" >nul 2>&1
+if not "%errorlevel%"=="0" (
     echo Error renaming original file.
     set EXITCODE=1
-    popd
-    endlocal & goto :EOF
+    goto :EOF
 )
 
 rem Rename temp → original
-ren "!TEMPFILE!" "!FILENAME!" >nul 2>&1
-if errorlevel 1 (
+ren "%TEMPFILE%" "%FILENAME%" >nul 2>&1
+if not "%errorlevel%"=="0" (
     echo Error replacing original file.
-    ren "!BACKUP!" "!FILENAME!" >nul 2>&1
+    ren "%BACKUP%" "%FILENAME%" >nul 2>&1
     set EXITCODE=1
-    popd
-    endlocal & goto :EOF
+    goto :EOF
 )
 
 rem Delete backup and thumbnail
-del "!BACKUP!" >nul 2>&1
-del "!TEMPTHUMB!" >nul 2>&1
-
-popd
+del "%BACKUP%" >nul 2>&1
+del "%TEMPTHUMB%" >nul 2>&1
 
 echo Done.
 echo.
 
-endlocal & goto :EOF
+goto :EOF
 
 
 rem ============================================================
 rem  CLEANUP
 rem ============================================================
 :CLEANUP
-if exist "!TEMPTHUMB!" del "!TEMPTHUMB!" >nul 2>&1
-goto END
+echo Cleaning up...
+
+if exist "%TEMPTHUMB%" del "%TEMPTHUMB%" >nul 2>&1
+if exist "%TEMPFILE%" del "%TEMPFILE%" >nul 2>&1
+
+goto :EOF
+
+
+rem ============================================================
+rem  LOG_ERROR
+rem ============================================================
+:LOG_ERROR
+echo ERROR processing file: %~1
+rem TODO: implement error logging
+goto :EOF
 
 
 rem ============================================================
