@@ -52,7 +52,7 @@ rem  FIRST PASS: CALCULATE AFFINITY AND RESTART SCRIPT UNDER THAT AFFINITY
 rem ============================================================================
 if not defined AFFINITY_BOOTSTRAPPED (
     call "%THREAD_LIMIT%" CALC_AFFINITY %THREADS%
-    if errorlevel 1 exit /b 1
+    if not !errorlevel! == 0 exit /b 1
 
     set "AFFINITY_BOOTSTRAPPED=1"
     start "" /affinity !AFFINITY! /b "%ComSpec%" /c ""%~f0" %*"
@@ -64,14 +64,14 @@ rem ============================================================================
 rem  CHECK FOR ab-av1
 rem ============================================================================
 call "%CHECK_TOOL%" CHECK_ABAV1
-if errorlevel 1 exit /b 1
+if not !errorlevel! == 0 exit /b 1
 
 
 rem ============================================================================
 rem  INPUT HANDLING
 rem ============================================================================
 call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
-if errorlevel 1 exit /b 1
+if not !errorlevel! == 0 exit /b 1
 
 call "%INPUT_HANDLER%" INIT_FILE_ITERATOR
 
@@ -135,11 +135,11 @@ for /f "tokens=1-12" %%a in ("!CMD_OUT!") do (
 
 rem --- VALIDATE CRF ---
 echo(!BEST_CRF!| findstr /r "^[0-9.][0-9.]*$" >nul
-if errorlevel 1 (
+if not !errorlevel! == 0 (
     call :LOG_FAIL "!F!" "CRF parsing failed! Output: !CMD_OUT!"
     echo ERROR: CRF parsing failed
     echo.
-    endlocal & goto :EOF
+    endlocal & exit /b 1
 )
 
 for /f "tokens=1 delims=." %%x in ("!BEST_CRF!") do set "CRF_INT=%%x"
@@ -148,14 +148,14 @@ if !CRF_INT! LSS 1 (
     call :LOG_FAIL "!F!" "CRF too small: !BEST_CRF!"
     echo ERROR: CRF too small
     echo.
-    endlocal & goto :EOF
+    endlocal & exit /b 1
 )
 
 if !CRF_INT! GTR 63 (
     call :LOG_FAIL "!F!" "CRF too big: !BEST_CRF!"
     echo ERROR: CRF too big
     echo.
-    endlocal & goto :EOF
+    endlocal & exit /b 1
 )
 
 rem --- Build output folder ---
@@ -175,26 +175,26 @@ set CMD=ab-av1.exe encode -i ".\!F!" --crf !BEST_CRF! %ENCODE_SETTINGS% --preset
 echo Executing: !CMD!
 
 !CMD!
-if errorlevel 1 (
+if not !errorlevel! == 0 (
     call :LOG_FAIL "!F!" "Final encode failed"
     echo ERROR: Final encode failed.
     echo.
-    endlocal & goto :EOF
+    endlocal & exit /b 1
 )
 
 rem --- Set thumbnail on the encoded file ---
 call "%SET_THUMBNAIL%" "!OUTFILE!"
-if errorlevel 1 (
+if not !errorlevel! == 0 (
     call :LOG_FAIL "!F!" "Thumbnail embedding failed"
     echo ERROR: Thumbnail embedding failed.
     echo.
-    endlocal & goto :EOF
+    endlocal & exit /b 1
 )
 
 echo Done: !OUTFILE!
 echo.
 
-endlocal & goto :EOF
+endlocal & exit /b 0
 
 
 rem ============================================================================

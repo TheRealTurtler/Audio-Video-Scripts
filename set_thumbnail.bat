@@ -31,15 +31,14 @@ rem ============================================================
 rem  CHECK REQUIRED TOOLS
 rem ============================================================
 call "%CHECK_TOOL%" CHECK_FFMPEG
-if not "%errorlevel%"=="0" goto END
+if not !errorlevel! == 0 goto END
 
 
 rem ============================================================
 rem  INPUT HANDLING
 rem ============================================================
-rem TODO: add parameter for allowed extensions (thumbnails only work with mp4, NOT with mkv and ESPECIALLY NOT with webm)
 call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
-if not "%errorlevel%"=="0" goto END
+if not !errorlevel! == 0 goto END
 
 call "%INPUT_HANDLER%" INIT_FILE_ITERATOR
 
@@ -86,7 +85,7 @@ set "BACKUP=%BASENAME%_backup%EXT%"
 
 rem Extract thumbnail frame
 ffmpeg -y -xerror -i "%FILENAME%" -ss 1 -vframes 1 "%TEMPTHUMB%" >nul 2>&1
-if not "%errorlevel%"=="0" (
+if not !errorlevel! == 0 (
     echo Error extracting thumbnail.
     set EXITCODE=1
     goto :EOF
@@ -103,7 +102,7 @@ ffmpeg -y -xerror -i "%FILENAME%" -i "%TEMPTHUMB%" ^
     -metadata:s:v:1 comment="Cover (front)" ^
     "%TEMPFILE%" >nul 2>&1
 
-if not "%errorlevel%"=="0" (
+if not !errorlevel! == 0 (
     echo Error embedding thumbnail.
     set EXITCODE=1
     goto :EOF
@@ -111,7 +110,7 @@ if not "%errorlevel%"=="0" (
 
 rem Rename original → backup
 ren "%FILENAME%" "%BACKUP%" >nul 2>&1
-if not "%errorlevel%"=="0" (
+if not !errorlevel! == 0 (
     echo Error renaming original file.
     set EXITCODE=1
     goto :EOF
@@ -119,7 +118,7 @@ if not "%errorlevel%"=="0" (
 
 rem Rename temp → original
 ren "%TEMPFILE%" "%FILENAME%" >nul 2>&1
-if not "%errorlevel%"=="0" (
+if not !errorlevel! == 0 (
     echo Error replacing original file.
     ren "%BACKUP%" "%FILENAME%" >nul 2>&1
     set EXITCODE=1

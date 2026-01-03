@@ -28,14 +28,14 @@ rem ============================================================
 rem  CHECK REQUIRED TOOLS
 rem ============================================================
 call "%CHECK_TOOL%" CHECK_FFMPEG
-if errorlevel 1 goto END
+if not !errorlevel! == 0 goto END
 
 
 rem ============================================================
 rem  INPUT HANDLING
 rem ============================================================
 call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
-if errorlevel 1 goto END
+if not !errorlevel! == 0 goto END
 
 call "%INPUT_HANDLER%" INIT_FILE_ITERATOR
 
@@ -56,7 +56,7 @@ for %%A in ("%CURRENTFILE%") do (
     call :PROCESS_FILE "%%~nxA"
     popd
 
-    if errorlevel 1 goto CLEANUP
+    if not !errorlevel! == 0 goto CLEANUP
 )
 
 goto LOOP
@@ -68,7 +68,6 @@ rem ============================================================
 :PROCESS_FILE
 setlocal EnableDelayedExpansion
 
-rem Input filename
 set "FILENAME=%~1"
 set "BASENAME=%~n1"
 set "EXT=%~x1"
@@ -78,22 +77,22 @@ set "TEMPFILE=temp_!BASENAME!!EXT!"
 set "BACKUP=!BASENAME!_backup!EXT!"
 
 rem Apply faststart
-ffmpeg -y -i "!FILENAME!" -c copy -map 0 -movflags +faststart "!TEMPFILE!" >nul 2>&1
-if errorlevel 1 (
+ffmpeg -y -xerror -i "!FILENAME!" -c copy -map 0 -movflags +faststart "!TEMPFILE!" >nul 2>&1
+if not !errorlevel! == 0 (
     echo Error applying faststart.
     endlocal & exit /b 1
 )
 
 rem Backup original
 ren "!FILENAME!" "!BACKUP!" >nul 2>&1
-if errorlevel 1 (
+if not !errorlevel! == 0 (
     echo Error renaming original file.
     endlocal & exit /b 1
 )
 
 rem Replace original with temp
 ren "!TEMPFILE!" "!FILENAME!" >nul 2>&1
-if errorlevel 1 (
+if not !errorlevel! == 0 (
     echo Error replacing original file.
     ren "!BACKUP!" "!FILENAME!" >nul 2>&1
     endlocal & exit /b 1
