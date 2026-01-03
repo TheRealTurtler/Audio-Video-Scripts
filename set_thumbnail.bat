@@ -41,40 +41,40 @@ rem TODO: add parameter for allowed extensions (thumbnails only work with mp4, N
 call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
 if not "%errorlevel%"=="0" goto END
 
-rem --- Count files ---
-set COUNT_TOTAL=0
-set COUNT_CURRENT=0
-for %%X in (%FILELIST%) do set /a COUNT_TOTAL+=1
+call "%INPUT_HANDLER%" INIT_FILE_ITERATOR
 
 
 rem ============================================================
 rem  PROCESS FILES
 rem ============================================================
-for %%F in (%FILELIST%) do (
-    rem Switch to the file's directory
-    pushd "%%~dpF"
+:LOOP
+call "%INPUT_HANDLER%" GET_NEXT_FILE CURRENTFILE
+if not defined CURRENTFILE goto END
 
-    rem Process the file (only filename, no path)
-    call :PROCESS_FILE "%%~nxF"
+for %%A in ("%CURRENTFILE%") do (
+    pushd "%%~dpA"
 
-    rem If an error occurred, log it and clean up
+    echo ===========================================================
+    echo Processing file !FILEINDEX! / !FILECOUNT! : %%~nxA
+    echo ===========================================================
+
+    call :PROCESS_FILE "%%~nxA"
+
     if not "!EXITCODE!"=="0" (
-        call :LOG_ERROR "%%~fF"
+        call :LOG_ERROR "%%A"
         call :CLEANUP
     )
 
-    rem Return to previous directory
     popd
 )
 
-goto END
+goto LOOP
 
 
 rem ============================================================
 rem  PROCESS_FILE
 rem ============================================================
 :PROCESS_FILE
-set /a COUNT_CURRENT+=1
 
 set "FILENAME=%~1"
 set "BASENAME=%~n1"
@@ -83,10 +83,6 @@ set "EXT=%~x1"
 set "TEMPTHUMB=thumb_%BASENAME%.jpg"
 set "TEMPFILE=temp_%BASENAME%%EXT%"
 set "BACKUP=%BASENAME%_backup%EXT%"
-
-echo ===========================================================
-echo Processing (!COUNT_CURRENT! / !COUNT_TOTAL!) : %FILENAME%
-echo ===========================================================
 
 rem Extract thumbnail frame
 ffmpeg -y -xerror -i "%FILENAME%" -ss 1 -vframes 1 "%TEMPTHUMB%" >nul 2>&1

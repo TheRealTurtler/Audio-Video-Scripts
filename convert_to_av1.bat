@@ -52,10 +52,10 @@ rem  FIRST PASS: CALCULATE AFFINITY AND RESTART SCRIPT UNDER THAT AFFINITY
 rem ============================================================================
 if not defined AFFINITY_BOOTSTRAPPED (
     call "%THREAD_LIMIT%" CALC_AFFINITY %THREADS%
-	if errorlevel 1 exit /b 1
+    if errorlevel 1 exit /b 1
 
     set "AFFINITY_BOOTSTRAPPED=1"
-    start "" /affinity !AFFINITY! /b cmd /c "%~f0" %*
+    start "" /affinity !AFFINITY! /b "%ComSpec%" /c ""%~f0" %*"
     exit /b
 )
 
@@ -73,22 +73,34 @@ rem ============================================================================
 call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
 if errorlevel 1 exit /b 1
 
-
-rem --- Count files ---
-set COUNT_TOTAL=0
-set COUNT_CURRENT=0
-for %%X in (%FILELIST%) do set /a COUNT_TOTAL+=1
+call "%INPUT_HANDLER%" INIT_FILE_ITERATOR
 
 
 rem ============================================================================
 rem  PROCESS FILES
 rem ============================================================================
-echo Starting AV1 Conversion... !COUNT_TOTAL! files
+echo Starting AV1 Conversion... !FILECOUNT! files
+echo.
 
 set FAILED_LOG_CREATED=0
 
-for %%F in (%FILELIST%) do call :PROCESS_FILE "%%~F"
+:LOOP
+call "%INPUT_HANDLER%" GET_NEXT_FILE CURRENTFILE
+if not defined CURRENTFILE goto DONE
 
+for %%A in ("%CURRENTFILE%") do (
+    echo ===========================================================
+    echo Processing !FILEINDEX! / !FILECOUNT! : %%~nxA
+    echo ===========================================================
+
+    pushd "%%~dpA"
+    call :PROCESS_FILE "%%~nxA"
+    popd
+)
+
+goto LOOP
+
+:DONE
 echo.
 echo All files processed.
 if "!FAILED_LOG_CREATED!"=="1" (
@@ -101,38 +113,24 @@ rem ============================================================================
 rem  PROCESS A SINGLE FILE
 rem ============================================================================
 :PROCESS_FILE
-set /a COUNT_CURRENT+=1
 setlocal EnableDelayedExpansion
 
 set "F=%~1"
 
-echo ===========================================================
-echo Processing (!COUNT_CURRENT! / !COUNT_TOTAL!) : !F!
-echo ===========================================================
-
-rem --- Change working directory to the folder of the current file ---
-for %%X in ("!F!") do pushd "%%~dpX"
-
 rem --- CRF SEARCH ---
-set CMD=ab-av1.exe crf-search -i "!F!" %ENCODE_SETTINGS% %ANALYSIS_SETTINGS% --preset %PRESET%
+set CMD=ab-av1.exe crf-search -i ".\!F!" %ENCODE_SETTINGS% %ANALYSIS_SETTINGS% --preset %PRESET%
 echo Executing: !CMD!
 
 set "CMD_OUT="
-for /f "delims=" %%a in ('!CMD!') do (
-    set "CMD_OUT=%%a"
-)
+for /f "delims=" %%a in ('!CMD!') do set "CMD_OUT=%%a"
 
 rem --- PARSE CRF-SEARCH OUTPUT ---
 set "BEST_CRF="
 set "BEST_VMAF="
 
 for /f "tokens=1-12" %%a in ("!CMD_OUT!") do (
-    if /i "%%a"=="crf" (
-        set "BEST_CRF=%%b"
-    )
-    if /i "%%c"=="VMAF" (
-        set "BEST_VMAF=%%d"
-    )
+    if /i "%%a"=="crf" set "BEST_CRF=%%b"
+    if /i "%%c"=="VMAF" set "BEST_VMAF=%%d"
 )
 
 rem --- VALIDATE CRF ---
@@ -141,7 +139,6 @@ if errorlevel 1 (
     call :LOG_FAIL "!F!" "CRF parsing failed! Output: !CMD_OUT!"
     echo ERROR: CRF parsing failed
     echo.
-    popd
     endlocal & goto :EOF
 )
 
@@ -151,7 +148,6 @@ if !CRF_INT! LSS 1 (
     call :LOG_FAIL "!F!" "CRF too small: !BEST_CRF!"
     echo ERROR: CRF too small
     echo.
-    popd
     endlocal & goto :EOF
 )
 
@@ -159,7 +155,6 @@ if !CRF_INT! GTR 63 (
     call :LOG_FAIL "!F!" "CRF too big: !BEST_CRF!"
     echo ERROR: CRF too big
     echo.
-    popd
     endlocal & goto :EOF
 )
 
@@ -176,33 +171,29 @@ for %%X in ("!F!") do (
 set "OUTFILE=!OUTDIR!\!BASENAME!_av1!EXT!"
 
 rem --- FINAL ENCODE ---
-set CMD=ab-av1.exe encode -i "!F!" --crf !BEST_CRF! %ENCODE_SETTINGS% --preset %PRESET% -o "!OUTFILE!"
+set CMD=ab-av1.exe encode -i ".\!F!" --crf !BEST_CRF! %ENCODE_SETTINGS% --preset %PRESET% -o "!OUTFILE!"
 echo Executing: !CMD!
 
 !CMD!
-
 if errorlevel 1 (
     call :LOG_FAIL "!F!" "Final encode failed"
     echo ERROR: Final encode failed.
     echo.
-    popd
     endlocal & goto :EOF
 )
 
 rem --- Set thumbnail on the encoded file ---
 call "%SET_THUMBNAIL%" "!OUTFILE!"
 if errorlevel 1 (
-	call :LOG_FAIL "!F!" "Thumbnail embedding failed"
+    call :LOG_FAIL "!F!" "Thumbnail embedding failed"
     echo ERROR: Thumbnail embedding failed.
-	echo.
-	popd
-	endlocal & goto :EOF
+    echo.
+    endlocal & goto :EOF
 )
 
 echo Done: !OUTFILE!
 echo.
 
-popd
 endlocal & goto :EOF
 
 
@@ -211,8 +202,6 @@ rem  LOG FAIL FUNCTION
 rem ============================================================================
 :LOG_FAIL
 set FAILED_LOG_CREATED=1
-
 set "LOGFILE=%CD%\av1-failed.txt"
 echo %~1 - %~2>> "%LOGFILE%"
-
 exit /b

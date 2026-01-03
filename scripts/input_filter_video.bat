@@ -1,21 +1,12 @@
 @echo off
-rem ============================================================
+setlocal
+
+rem ============================================================================
 rem  DESCRIPTION
-rem ============================================================
-rem  This module filters input paths and collects valid video
-rem  files for further processing.
-rem
-rem  - Accepts either a file or a folder path
-rem  - If the path is a folder, all supported video files inside
-rem    the folder are added to FILELIST
-rem  - If the path is a file, it is added directly to FILELIST
-rem
-rem  Usage:
-rem      call input_filter_video.bat FILTER_VIDEO <path>
-rem
-rem  Requirements:
-rem      The caller must define FILELIST before invoking this module.
-rem ============================================================
+rem ============================================================================
+rem  This module validates a single file path and checks whether the file has
+rem  a supported video extension.
+rem ============================================================================
 
 
 rem --- Dispatcher ---
@@ -34,33 +25,29 @@ if "%~1" neq "" (
 exit /b
 
 
+rem ============================================================================
+rem  FILTER VIDEO FILES
+rem ============================================================================
 :FILTER_VIDEO
-set "TARGET=%~1"
+setlocal
 
-if not defined VIDEO_EXTENSIONS (
-    set "VIDEO_EXTENSIONS=*.mp4 *.mkv *.mov *.webm"
+rem Allowed extensions (without dot)
+set "ALLOWED_EXT=mp4 mkv mov webm"
+
+set "FILE=%~1"
+if not exist "%FILE%" (
+    endlocal & exit /b 1
 )
 
-rem Normalize path
-for /f "delims=" %%Z in ("%TARGET%") do set "TARGET=%%~fZ"
+rem Extract extension (remove leading dot)
+set "EXT=%~x1"
+set "EXT=%EXT:~1%"
 
-rem Folder
-if exist "%TARGET%\" (
-    pushd "%TARGET%" >nul
-    for %%E in (%VIDEO_EXTENSIONS%) do (
-        for %%F in (%%E) do (
-            set "FILELIST=!FILELIST! "%%~fF""
-        )
+rem Validate extension
+for %%E in (%ALLOWED_EXT%) do (
+    if /i "%%E"=="%EXT%" (
+        endlocal & exit /b 0
     )
-    popd >nul
-    exit /b 0
 )
 
-rem Single file
-if exist "%TARGET%" (
-    set "FILELIST=!FILELIST! "%TARGET%""
-    exit /b 0
-)
-
-echo WARNING: Path not found: %TARGET%
-exit /b 0
+endlocal & exit /b 1

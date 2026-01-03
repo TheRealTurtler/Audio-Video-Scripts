@@ -37,92 +37,75 @@ rem ============================================================
 call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
 if errorlevel 1 goto END
 
-rem Count files
-set COUNT_TOTAL=0
-set COUNT_CURRENT=0
-for %%X in (%FILELIST%) do set /a COUNT_TOTAL+=1
+call "%INPUT_HANDLER%" INIT_FILE_ITERATOR
 
 
 rem ============================================================
 rem  PROCESS FILES
 rem ============================================================
-for %%F in (%FILELIST%) do (
-    call :PROCESS_FILE "%%~F"
+:LOOP
+call "%INPUT_HANDLER%" GET_NEXT_FILE CURRENTFILE
+if not defined CURRENTFILE goto END
+
+for %%A in ("%CURRENTFILE%") do (
+    echo ===========================================================
+    echo Processing !FILEINDEX! / !FILECOUNT! : %%~nxA
+    echo ===========================================================
+
+    pushd "%%~dpA"
+    call :PROCESS_FILE "%%~nxA"
+    popd
+
     if errorlevel 1 goto CLEANUP
 )
-goto END
+
+goto LOOP
 
 
 rem ============================================================
 rem  PROCESS A SINGLE FILE
 rem ============================================================
 :PROCESS_FILE
-set /a COUNT_CURRENT+=1
 setlocal EnableDelayedExpansion
 
-set "F=%~1"
+rem Input filename
+set "FILENAME=%~1"
+set "BASENAME=%~n1"
+set "EXT=%~x1"
 
-echo ===========================================================
-echo Processing (!COUNT_CURRENT! / !COUNT_TOTAL!) : !F!
-echo ===========================================================
-
-rem Switch to file directory
-for %%X in ("!F!") do (
-    pushd "%%~dpX"
-    set "FILENAME=%%~nxX"
-    set "BASENAME=%%~nX"
-    set "EXT=%%~xX"
-)
-
+rem Temp and backup names
 set "TEMPFILE=temp_!BASENAME!!EXT!"
 set "BACKUP=!BASENAME!_backup!EXT!"
 
-
-rem ============================================================
-rem  APPLY MOVFLAGS +FASTSTART
-rem ============================================================
+rem Apply faststart
 ffmpeg -y -i "!FILENAME!" -c copy -map 0 -movflags +faststart "!TEMPFILE!" >nul 2>&1
 if errorlevel 1 (
     echo Error applying faststart.
-    set EXITCODE=1
-    popd
-    endlocal & goto :EOF
+    endlocal & exit /b 1
 )
 
-
-rem ============================================================
-rem  BACKUP ORIGINAL
-rem ============================================================
+rem Backup original
 ren "!FILENAME!" "!BACKUP!" >nul 2>&1
 if errorlevel 1 (
     echo Error renaming original file.
-    set EXITCODE=1
-    popd
-    endlocal & goto :EOF
+    endlocal & exit /b 1
 )
 
-
-rem ============================================================
-rem  REPLACE ORIGINAL WITH TEMP
-rem ============================================================
+rem Replace original with temp
 ren "!TEMPFILE!" "!FILENAME!" >nul 2>&1
 if errorlevel 1 (
     echo Error replacing original file.
     ren "!BACKUP!" "!FILENAME!" >nul 2>&1
-    set EXITCODE=1
-    popd
-    endlocal & goto :EOF
+    endlocal & exit /b 1
 )
 
-rem Delete backup
+rem Remove backup
 del "!BACKUP!" >nul 2>&1
-
-popd
 
 echo Done.
 echo.
 
-endlocal & goto :EOF
+endlocal & exit /b 0
 
 
 rem ============================================================
