@@ -27,7 +27,7 @@ rem ============================================================================
 
 rem ---------------- USER SETTINGS ----------------
 set PRESET=4
-set ENCODE_SETTINGS=
+set ENCODE_SETTINGS=--svt enable-variance-boost=1
 set ANALYSIS_SETTINGS=--enc vsync=passthrough
 
 rem Video can be trimmed using these settings:
