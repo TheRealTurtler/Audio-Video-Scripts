@@ -20,18 +20,6 @@ rem ============================================================
 
 set EXITCODE=0
 
-rem ---------------- USER SETTINGS ----------------
-set TRIM_FROM=
-set TRIM_TO=
-
-rem Validate trimming parameters
-if not defined TRIM_FROM if not defined TRIM_TO (
-	echo ERROR: At least one of TRIM_FROM or TRIM_TO must be set.
-	set EXITCODE=1
-	goto END
-)
-
-
 rem ============================================================
 rem  MODULES
 rem ============================================================
@@ -53,6 +41,24 @@ call "%INPUT_HANDLER%" HANDLE_INPUT_VIDEO %*
 if not !errorlevel! == 0 goto END
 
 call "%INPUT_HANDLER%" INIT_FILE_ITERATOR
+
+
+rem ============================================================
+rem  USER INPUT - TRIM TIMES
+rem ============================================================
+echo.
+echo Video Trimming Script
+echo.
+set /p TRIM_FROM="Enter trim start time (format HH:MM:SS or leave blank): "
+set /p TRIM_TO="Enter trim end time (format HH:MM:SS or leave blank): "
+echo.
+
+rem Validate trimming parameters
+if not defined TRIM_FROM if not defined TRIM_TO (
+	echo ERROR: At least one of trim start or end time must be provided.
+	set EXITCODE=1
+	goto END
+)
 
 
 rem ============================================================
