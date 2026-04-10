@@ -10,7 +10,8 @@ rem  - Input can be: single files, multiple files, folders, or
 rem    drag & drop arguments.
 rem  - TRIM_FROM and TRIM_TO set the start and end times.
 rem  - Output is written as "<basename>_trimmed<ext>".
-rem  - The original file is never modified or replaced.
+rem  - After trimming, optionally replace the original with the trimmed version
+rem    or open the trimmed file for preview before deciding.
 rem
 rem  Dependencies:
 rem      - ffmpeg.exe
@@ -116,6 +117,39 @@ if not !errorlevel! == 0 (
 )
 
 echo Done: %OUTFILE%
+echo.
+
+rem ============================================================
+rem  USER CHOICE LOOP
+rem ============================================================
+:CHOICE_LOOP
+echo Options:
+echo   r = Replace original file
+echo   k = Keep both files
+echo   o = Open trimmed file for preview
+echo.
+set /p USER_CHOICE="What would you like to do? (r/k/o): "
+echo.
+
+if /i "!USER_CHOICE!" == "r" (
+    echo Replacing original file...
+    move "%OUTFILE%" "%FILENAME%" >nul 2>&1
+    if !errorlevel! == 0 (
+        echo Original file replaced successfully.
+    ) else (
+        echo Error replacing original file.
+        set EXITCODE=1
+    )
+) else if /i "!USER_CHOICE!" == "k" (
+    echo Keeping both files.
+) else if /i "!USER_CHOICE!" == "o" (
+    echo Opening trimmed file...
+    start /wait "" "%OUTFILE%" >nul 2>&1
+    goto CHOICE_LOOP
+) else (
+    echo Invalid choice. Please enter r, k, or o.
+    goto CHOICE_LOOP
+)
 echo.
 
 goto :EOF
