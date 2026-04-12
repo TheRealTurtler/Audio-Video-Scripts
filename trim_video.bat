@@ -127,8 +127,9 @@ echo Options:
 echo   r = Replace original file
 echo   k = Keep both files
 echo   o = Open trimmed file for preview
+echo   d = Delete trimmed file
 echo.
-set /p USER_CHOICE="What would you like to do? (r/k/o): "
+set /p USER_CHOICE="What would you like to do? (r/k/o/d): "
 echo.
 
 if /i "!USER_CHOICE!" == "r" (
@@ -146,8 +147,17 @@ if /i "!USER_CHOICE!" == "r" (
     echo Opening trimmed file...
     start /wait "" "%OUTFILE%" >nul 2>&1
     goto CHOICE_LOOP
+) else if /i "!USER_CHOICE!" == "d" (
+    echo Deleting trimmed file...
+    del "%OUTFILE%" >nul 2>&1
+    if !errorlevel! == 0 (
+        echo Trimmed file deleted successfully.
+    ) else (
+        echo Error deleting trimmed file.
+        set EXITCODE=1
+    )
 ) else (
-    echo Invalid choice. Please enter r, k, or o.
+    echo Invalid choice. Please enter one of the available options.
     goto CHOICE_LOOP
 )
 echo.
