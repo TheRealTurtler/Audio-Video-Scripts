@@ -17,13 +17,13 @@ set ENCODER=libx264
 set PRESET=slow
 
 rem Additional settings when encoding (analysis and final encode)
-set ENCODER_SETTINGS=--enc x264-params=aq-mode=2 --vfilter scale=1920:-2
+set ENCODER_SETTINGS=--enc x264-params=aq-mode=2 --vfilter scale=1920:-2 --pix-format yuv420p --enc profile:v=high --enc level:v=4.0
 
 rem Additional settings when encoding (analysis only)
 set ANALYSIS_SETTINGS=--max-encoded-percent=1000
 
-set OUTPUT_DIR=h265
-set ERROR_LOG=h265-failed.txt
+set OUTPUT_DIR=h264
+set ERROR_LOG=h264-failed.txt
 
 rem Number of threads to use (-1 = all)
 set THREADS=8
