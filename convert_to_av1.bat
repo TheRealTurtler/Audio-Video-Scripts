@@ -9,7 +9,7 @@ rem
 rem  - Accepts files or folders (drag & drop or manual input)
 rem  - Runs CRF analysis using ab-av1 to determine the optimal CRF value
 rem  - Encodes the video using the detected CRF
-rem  - Output is stored in a "Converted" subfolder inside the source directory
+rem  - Output is stored in a "av1" subfolder inside the source directory
 rem  - Output container matches the input container
 rem  - Thread usage is controlled via CPU affinity (THREADS setting)
 rem  - Failed files are logged in "av1-failed.txt" in the source directory
@@ -30,10 +30,8 @@ set PRESET=4
 set ENCODE_SETTINGS=--svt enable-variance-boost=1
 set ANALYSIS_SETTINGS=--enc vsync=passthrough
 
-rem Video can be trimmed using these settings:
-rem ENCODE_SETTINGS=--enc ss=1:00 --enc to=6:00
-
-set OUTPUT_DIR=Converted
+set OUTPUT_DIR=av1
+set ERROR_LOG=av1-failed.txt
 
 rem Number of threads to use (-1 = all)
 set THREADS=8
@@ -106,7 +104,7 @@ goto LOOP
 echo.
 echo All files processed.
 if "!FAILED_LOG_CREATED!"=="1" (
-    echo Some files failed. See av1-failed.txt in each source directory.
+    echo Some files failed. See %ERROR_LOG% in each source directory.
 )
 exit /b 0
 
@@ -171,7 +169,7 @@ for %%X in ("!F!") do (
     set "BASENAME=%%~nX"
 )
 
-set "OUTFILE=!OUTDIR!\!BASENAME!_av1!EXT!"
+set "OUTFILE=!OUTDIR!\!BASENAME!!EXT!"
 
 rem --- Final Encode ---
 echo Encoding with CRF !BEST_CRF! (VMAF: !BEST_VMAF!)...
@@ -217,6 +215,6 @@ rem  LOG FAIL FUNCTION
 rem ============================================================================
 :LOG_FAIL
 set FAILED_LOG_CREATED=1
-set "LOGFILE=%CD%\av1-failed.txt"
+set "LOGFILE=%CD%\%ERROR_LOG%"
 echo %~1 - %~2>> "%LOGFILE%"
 exit /b
