@@ -1,29 +1,38 @@
-:: Script to create a h.264 version of all input files
-:: Conversion is done using constant quality 18
-
 @echo off
-setlocal enabledelayedexpansion
 
-set /p input=Copy Subtitles? (y/n):
-if /I "%input%"=="y" goto with_subtitles
-goto without_subtitles
+rem ============================================================================
+rem  DESCRIPTION
+rem ============================================================================
+rem  Wrapper script for running convert_to_xyz.bat with fixed encoder settings.
+rem
+rem  ab-av1 is used to determine the optimal CRF based on VMAF analysis.
+rem  After the best CRF is found, all input files are encoded to H.264 (x264).
+rem ============================================================================
 
-:with_subtitles:
-for %%a in (%*) do (
-	for /F "delims=" %%i in (%%a) do (
-		set outfile=%%~di%%~pi%%~ni - H264%%~xi
-		ffmpeg -hide_banner -y -i %%a -c:a copy -c:s copy -c:v h264_amf -rc_mode CQP -qp_i 18 -qp_p 18 -qp_b 18 -map 0 "!outfile!"
-	)
-)
-goto exit
 
-:without_subtitles
-for %%a in (%*) do (
-	for /F "delims=" %%i in (%%a) do (
-		set outfile=%%~di%%~pi%%~ni - H264%%~xi
-		ffmpeg -hide_banner -y -i %%a -c:a copy -c:v h264_amf -rc_mode CQP -qp_i 18 -qp_p 18 -qp_b 18 -map 0:v -map 0:a "!outfile!"
-	)
-)
-goto exit
+rem Encoder settings
+set ENCODER=libx264
+set PRESET=slow
 
-:exit
+rem Additional settings when encoding (analysis and final encode)
+set ENCODER_SETTINGS=--enc x264-params=aq-mode=2
+
+rem Additional settings when encoding (analysis only)
+set ANALYSIS_SETTINGS=--max-encoded-percent=1000
+
+set OUTPUT_DIR=h265
+set ERROR_LOG=h265-failed.txt
+
+rem Number of threads to use (-1 = all)
+set THREADS=8
+
+
+call "%~dp0convert_to_xyz.bat" ^
+    %ENCODER% ^
+    %PRESET% ^
+    "%ENCODER_SETTINGS%" ^
+    "%ANALYSIS_SETTINGS%" ^
+    %OUTPUT_DIR% ^
+    %ERROR_LOG% ^
+    %THREADS% ^
+    %*
