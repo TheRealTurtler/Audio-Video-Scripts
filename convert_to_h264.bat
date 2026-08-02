@@ -15,7 +15,7 @@ set ENCODER=libx264
 set PRESET=slow
 
 rem Additional settings for encoding (analysis and final encode)
-set SETTINGS_ENCODE_ALWAYS=--enc x264-params=aq-mode=2 --enc x264-params=aq-strength=1.3 --enc x264-params=tune=film
+set SETTINGS_ENCODE_ALWAYS=
 
 rem Additional settings for analysis only
 set SETTINGS_ENCODE_ANALYSIS=--max-encoded-percent=1000
