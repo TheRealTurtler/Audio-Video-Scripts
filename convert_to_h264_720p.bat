@@ -17,7 +17,7 @@ set ENCODER=libx264
 set PRESET=slow
 
 rem Additional settings for encoding (analysis and final encode)
-set SETTINGS_ENCODE_ALWAYS=--pix-format yuv420p --vfilter scale=1280:-2 --enc profile:v=high --enc level:v=3.1
+set SETTINGS_ENCODE_ALWAYS=--pix-format yuv420p --vfilter zscale=transfer=linear,tonemap=hable,zscale=primaries=bt709:transfer=bt709:matrix=bt709:width=1280:height=-2 --enc profile:v=high --enc level:v=3.1
 
 rem Additional settings for analysis only
 set SETTINGS_ENCODE_ANALYSIS=--max-encoded-percent=1000
