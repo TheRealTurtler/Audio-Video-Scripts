@@ -35,8 +35,9 @@ set THREADS=8
 call "%~dp0convert_to_xyz.bat" ^
     %ENCODER% ^
     %PRESET% ^
-    "%ENCODER_SETTINGS%" ^
-    "%ANALYSIS_SETTINGS%" ^
+    "%SETTINGS_ENCODE_ALWAYS%" ^
+    "%SETTINGS_ENCODE_ANALYSIS%" ^
+    "%SETTINGS_ENCODE_FINAL%" ^
     %OUTPUT_DIR% ^
     %ERROR_LOG% ^
     %THREADS% ^
