@@ -28,12 +28,12 @@ rem ============================================================================
 rem ---------------- USER PARAMETERS ----------------
 set "ENCODER=%~1"
 set "PRESET=%~2"
-set "ENCODER_SETTINGS=%~3"
-set "ANALYSIS_SETTINGS=%~4"
-set "OUTPUT_DIR=%~5"
-set "ERROR_LOG=%~6"
-set "THREADS=%~7"
-
+set "SETTINGS_ENCODE_ALWAYS=%~3"
+set "SETTINGS_ENCODE_ANALYSIS=%~4"
+set "SETTINGS_ENCODE_FINAL=%~5"
+set "OUTPUT_DIR=%~6"
+set "ERROR_LOG=%~7"
+set "THREADS=%~8"
 
 rem ============================================================================
 rem  MODULES
@@ -62,13 +62,16 @@ rem ============================================================================
 rem  INPUT HANDLING
 rem ============================================================================
 
-rem --- Collect input files or folders (starting at parameter 8) ---
+rem Shift first 8 arguments so the original 9th parameter is accessed as %~1
+for /L %%I in (1,1,8) do shift
+
+rem --- Collect input files or folders ---
 set "INPUTS="
 
 :COLLECT_INPUTS
-if "%~8"=="" goto DONE_INPUTS
+if "%~1"=="" goto DONE_INPUTS
 
-set "CUR=%~8"
+set "CUR=%~1"
 
 if not defined INPUTS (
     set INPUTS="%CUR%"
@@ -76,7 +79,7 @@ if not defined INPUTS (
     set INPUTS=%INPUTS% "%CUR%"
 )
 
-shift /8
+shift
 goto COLLECT_INPUTS
 
 :DONE_INPUTS
@@ -130,7 +133,7 @@ set "F=%~1"
 
 
 rem --- CRF SEARCH ---
-call "%CRF_MODULE%" CRF_SEARCH ".\!F!" %ENCODER% %PRESET% "%ENCODER_SETTINGS%" "%ANALYSIS_SETTINGS%"
+call "%CRF_MODULE%" CRF_SEARCH ".\!F!" %ENCODER% %PRESET% "%SETTINGS_ENCODE_ALWAYS%" "%SETTINGS_ENCODE_ANALYSIS%"
 if not !errorlevel! == 0 (
     call :LOG_FAIL "!F!" "CRF search failed"
     endlocal & exit /b 1
@@ -153,7 +156,7 @@ set "OUTFILE=!OUTDIR!\!BASENAME!!EXT!"
 
 
 rem --- FINAL ENCODE ---
-call "%CRF_MODULE%" FINAL_ENCODE ".\!F!" %ENCODER% %PRESET% "%ENCODER_SETTINGS%" %BEST_CRF% "!OUTFILE!"
+call "%CRF_MODULE%" FINAL_ENCODE ".\!F!" %ENCODER% %PRESET% "%SETTINGS_ENCODE_ALWAYS%" "%SETTINGS_ENCODE_FINAL%" %BEST_CRF% "!OUTFILE!"
 if not !errorlevel! == 0 (
     call :LOG_FAIL "!F!" "Final encode failed"
     endlocal & exit /b 1

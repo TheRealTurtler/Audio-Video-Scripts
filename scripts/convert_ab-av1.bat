@@ -38,19 +38,19 @@ rem PARAMETERS:
 rem   %1 = INPUTFILE
 rem   %2 = ENCODER
 rem   %3 = PRESET
-rem   %4 = ENCODE_SETTINGS
-rem   %5 = ANALYSIS_SETTINGS
+rem   %4 = SETTINGS_ENCODE_ALWAYS
+rem   %5 = SETTINGS_ENCODE_ANALYSIS
 
 setlocal EnableDelayedExpansion
 
 set "INPUT=%~1"
 set "ENCODER=%~2"
 set "PRESET=%~3"
-set "ENCODE_SETTINGS=%~4"
-set "ANALYSIS_SETTINGS=%~5"
+set "SETTINGS_ENCODE_ALWAYS=%~4"
+set "SETTINGS_ENCODE_ANALYSIS=%~5"
 
 echo Searching for best CRF...
-set CMD=ab-av1.exe crf-search -i "%INPUT%" -e %ENCODER% %ENCODE_SETTINGS% %ANALYSIS_SETTINGS% --preset %PRESET%
+set CMD=ab-av1.exe crf-search -i "%INPUT%" -e %ENCODER% %SETTINGS_ENCODE_ALWAYS% %SETTINGS_ENCODE_ANALYSIS% --preset %PRESET%
 echo Executing: !CMD!
 
 set "CMD_OUT="
@@ -100,21 +100,23 @@ rem PARAMETERS:
 rem   %1 = INPUTFILE
 rem   %2 = ENCODER
 rem   %3 = PRESET
-rem   %4 = ENCODE_SETTINGS
-rem   %5 = CRF
-rem   %6 = OUTPUTFILE
+rem   %4 = SETTINGS_ENCODE_ALWAYS
+rem   %5 = SETTINGS_ENCODE_FINAL
+rem   %6 = CRF
+rem   %7 = OUTPUTFILE
 
 setlocal EnableDelayedExpansion
 
 set "INPUT=%~1"
 set "ENCODER=%~2"
 set "PRESET=%~3"
-set "ENCODE_SETTINGS=%~4"
-set "CRF=%~5"
-set "OUTPUT=%~6"
+set "SETTINGS_ENCODE_ALWAYS=%~4"
+set "SETTINGS_ENCODE_FINAL=%~5"
+set "CRF=%~6"
+set "OUTPUT=%~7"
 
 echo Encoding with CRF %CRF%...
-set CMD=ab-av1.exe encode -i "%INPUT%" -e %ENCODER% --crf %CRF% %ENCODE_SETTINGS% --preset %PRESET% -o "%OUTPUT%"
+set CMD=ab-av1.exe encode -i "%INPUT%" -e %ENCODER% --crf %CRF% %SETTINGS_ENCODE_ALWAYS% %SETTINGS_ENCODE_FINAL% --preset %PRESET% -o "%OUTPUT%"
 echo Executing: !CMD!
 
 !CMD!

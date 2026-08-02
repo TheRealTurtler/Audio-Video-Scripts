@@ -14,11 +14,14 @@ rem Encoder settings
 set ENCODER=libx264
 set PRESET=slow
 
-rem Additional settings when encoding (analysis and final encode)
-set ENCODER_SETTINGS=--enc x264-params=aq-mode=2
+rem Additional settings for encoding (analysis and final encode)
+set SETTINGS_ENCODE_ALWAYS=--enc x264-params=aq-mode=2
 
-rem Additional settings when encoding (analysis only)
-set ANALYSIS_SETTINGS=--max-encoded-percent=1000
+rem Additional settings for analysis only
+set SETTINGS_ENCODE_ANALYSIS=--max-encoded-percent=1000
+
+rem Additional settings for final encoding only
+set SETTINGS_ENCODE_FINAL=
 
 set OUTPUT_DIR=h264
 set ERROR_LOG=h264-failed.txt
@@ -30,8 +33,9 @@ set THREADS=8
 call "%~dp0convert_to_xyz.bat" ^
     %ENCODER% ^
     %PRESET% ^
-    "%ENCODER_SETTINGS%" ^
-    "%ANALYSIS_SETTINGS%" ^
+	"%SETTINGS_ENCODE_ALWAYS%" ^
+    "%SETTINGS_ENCODE_ANALYSIS%" ^
+    "%SETTINGS_ENCODE_FINAL%" ^
     %OUTPUT_DIR% ^
     %ERROR_LOG% ^
     %THREADS% ^
