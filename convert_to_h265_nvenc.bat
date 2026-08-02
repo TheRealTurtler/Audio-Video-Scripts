@@ -25,8 +25,8 @@ set SETTINGS_ENCODE_ANALYSIS=
 rem Additional settings for final encoding only
 set SETTINGS_ENCODE_FINAL=
 
-set OUTPUT_DIR=h264
-set ERROR_LOG=h264-failed.txt
+set OUTPUT_DIR=h265
+set ERROR_LOG=h265-failed.txt
 
 rem Number of threads to use (-1 = all)
 set THREADS=8
