@@ -15,7 +15,7 @@ set ENCODER=libx265
 set PRESET=slow
 
 rem Additional settings for encoding (analysis and final encode)
-set SETTINGS_ENCODE_ALWAYS=--enc x265-params=aq-mode=3
+set SETTINGS_ENCODE_ALWAYS=--enc x265-params=aq-mode=3 --enc x265-params=aq-strength=1.3 --enc x265-params=tune=film
 
 rem Additional settings for analysis only
 set SETTINGS_ENCODE_ANALYSIS=
